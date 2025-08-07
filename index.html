@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sensor Camera with Manual Controls</title>
     <style>
         body {
@@ -18,7 +18,9 @@
             border-radius: 10px;
             margin-bottom: 1em;
         }
-        .controls, .sensor-data, .camera-settings {
+        .controls,
+        .sensor-data,
+        .camera-settings {
             margin: 1em auto;
             max-width: 600px;
             background: #222;
@@ -30,7 +32,7 @@
             display: block;
             margin-top: 1em;
         }
-        input[type=range] {
+        input[type='range'] {
             width: 100%;
         }
     </style>
@@ -60,7 +62,9 @@
 
         async function initCamera() {
             try {
-                videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }
+                });
                 const video = document.getElementById("video");
                 video.srcObject = videoStream;
                 await video.play();
@@ -75,12 +79,14 @@
             const capabilities = track.getCapabilities();
             const cameraControls = document.getElementById("cameraControls");
 
+            console.log("Camera Capabilities:", capabilities);
+
             function addSlider(name, key) {
                 if (!capabilities[key]) return;
 
                 const container = document.createElement("div");
                 const label = document.createElement("label");
-                label.textContent = `${name}:`;
+                label.textContent = `${name}: `;
 
                 const valueSpan = document.createElement("span");
                 valueSpan.id = key + "Value";
@@ -95,7 +101,9 @@
                 input.oninput = async () => {
                     valueSpan.textContent = input.value;
                     try {
-                        await track.applyConstraints({ advanced: [{ [key]: parseFloat(input.value) }] });
+                        await track.applyConstraints({
+                            advanced: [{ [key]: parseFloat(input.value) }]
+                        });
                     } catch (e) {
                         console.warn(`Failed to set ${key}`, e);
                     }
@@ -109,7 +117,7 @@
 
             addSlider("Zoom", "zoom");
             addSlider("Focus Distance", "focusDistance");
-            addSlider("Exposure", "exposureCompensation");
+            addSlider("Exposure Compensation", "exposureCompensation");
             addSlider("White Balance", "whiteBalance");
         }
 
@@ -120,14 +128,32 @@
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext("2d");
             ctx.drawImage(video, 0, 0);
-            canvas.toBlob(blob => {
+
+            // Helper to format numbers safely for filename
+            function fmtNum(n) {
+                if (n === undefined || n === null || isNaN(n)) return "NA";
+                return n.toFixed(2).replace(/\./g, "_");
+            }
+
+            const o = currentSensor.orientation;
+            const p = currentSensor.position;
+
+            const sensorString =
+                `A${fmtNum(o.alpha)}_B${fmtNum(o.beta)}_G${fmtNum(o.gamma)}_` +
+                `Lat${fmtNum(p.latitude)}_Lon${fmtNum(p.longitude)}_Acc${fmtNum(p.accuracy)}`;
+
+            const timestamp = Date.now();
+
+            const filename = `photo_${sensorString}_${timestamp}.jpg`;
+
+            canvas.toBlob((blob) => {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `photo_${Date.now()}.jpg`;
+                a.download = filename;
                 a.click();
                 URL.revokeObjectURL(url);
-            }, 'image/jpeg');
+            }, "image/jpeg");
         }
 
         function updateSensorOutput() {
@@ -135,7 +161,7 @@
             out.textContent = JSON.stringify(currentSensor, null, 2);
         }
 
-        window.addEventListener("deviceorientation", e => {
+        window.addEventListener("deviceorientation", (e) => {
             currentSensor.orientation = {
                 alpha: e.alpha,
                 beta: e.beta,
@@ -144,16 +170,20 @@
             updateSensorOutput();
         });
 
-        navigator.geolocation.watchPosition(pos => {
-            currentSensor.position = {
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                accuracy: pos.coords.accuracy
-            };
-            updateSensorOutput();
-        }, err => {
-            console.warn("GPS error", err);
-        }, { enableHighAccuracy: true });
+        navigator.geolocation.watchPosition(
+            (pos) => {
+                currentSensor.position = {
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy
+                };
+                updateSensorOutput();
+            },
+            (err) => {
+                console.warn("GPS error", err);
+            },
+            { enableHighAccuracy: true }
+        );
 
         initCamera();
     </script>
