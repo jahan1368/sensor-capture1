@@ -3,322 +3,180 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sensor Camera with Touch Autofocus & Auto Exposure</title>
+<title>Full Sensor Demo (Web)</title>
 <style>
-    body {
-        font-family: sans-serif;
-        background: #111;
-        color: white;
-        text-align: center;
-        padding: 1em;
-    }
-    video {
-        width: 100%;
-        max-width: 600px;
-        border-radius: 10px;
-        margin-bottom: 1em;
-        touch-action: manipulation;
-        user-select: none;
-    }
-    .controls, .sensor-data {
-        margin: 1em auto;
-        max-width: 600px;
-        background: #222;
-        padding: 1em;
-        border-radius: 10px;
-        text-align: left;
-    }
-    label {
-        display: block;
-        margin-top: 1em;
-    }
-    select, button {
-        font-size: 1rem;
-        padding: 0.5em;
-        margin-top: 0.5em;
-        width: 100%;
-        cursor: pointer;
-    }
-    .inline-buttons button {
-        width: 48%;
-        margin-right: 2%;
-        margin-top: 0.5em;
-    }
-    .inline-buttons button:last-child {
-        margin-right: 0;
-    }
+  body {
+    font-family: monospace, monospace;
+    background: #111;
+    color: #eee;
+    padding: 1em;
+    max-width: 600px;
+    margin: auto;
+  }
+  video {
+    width: 100%;
+    max-width: 600px;
+    border-radius: 8px;
+    margin-bottom: 1em;
+    background: black;
+  }
+  pre {
+    background: #222;
+    padding: 1em;
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
 </style>
 </head>
 <body>
-    <h1>📸 Sensor Camera</h1>
 
-    <div class="controls">
-        <label for="resolutionSelect">Choose Resolution:</label>
-        <select id="resolutionSelect">
-            <option value="640x480">640 x 480</option>
-            <option value="1280x720" selected>1280 x 720</option>
-            <option value="1920x1080">1920 x 1080</option>
-            <option value="2560x1440">2560 x 1440</option>
-        </select>
-        <button id="startCameraBtn">Start Camera</button>
+<h1>📡 Full Sensor Demo</h1>
 
-        <div class="inline-buttons">
-            <button id="toggleAutoFocusBtn">Toggle Autofocus</button>
-            <button id="toggleAutoExposureBtn">Toggle Auto Exposure</button>
-        </div>
+<video id="video" autoplay playsinline muted></video>
 
-        <button onclick="capturePhoto()" style="margin-top: 1em;">Capture Photo (BMP)</button>
-        <small style="color:#aaa;">* Tap on video to try focus/expose on that spot *</small>
-    </div>
+<h2>Sensor Data</h2>
 
-    <video id="video" autoplay playsinline muted></video>
-
-    <div class="sensor-data" id="sensorData">
-        <strong>Sensor Data:</strong>
-        <pre id="sensorOutput">Waiting for data...</pre>
-    </div>
-
-    <canvas id="canvas" style="display:none;"></canvas>
+<pre id="sensorData">Waiting for sensor data...</pre>
 
 <script>
-    let videoStream;
-    let currentSensor = { orientation: {}, position: {} };
-    let videoTrack;
-    let isAutoFocusOn = true;
-    let isAutoExposureOn = true;
+(async () => {
+  const sensorDataEl = document.getElementById("sensorData");
+  const videoEl = document.getElementById("video");
 
-    async function startCamera() {
-        const select = document.getElementById("resolutionSelect");
-        const [width, height] = select.value.split('x').map(Number);
+  // Show camera video
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    videoEl.srcObject = stream;
+  } catch(e) {
+    sensorDataEl.textContent = "Camera error: " + e.message;
+  }
 
-        if (videoStream) {
-            videoStream.getTracks().forEach(t => t.stop());
-        }
+  // State to hold sensor values
+  const data = {
+    deviceOrientation: {},
+    deviceMotion: {},
+    geolocation: {},
+    ambientLight: "N/A",
+    magnetometer: "N/A",
+    gyroscope: "N/A",
+    accelerometer: "N/A"
+  };
 
-        try {
-            videoStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    width: { exact: width },
-                    height: { exact: height },
-                    facingMode: "environment",
-                    focusMode: "continuous", // try to enable continuous focus if supported
-                    exposureMode: "continuous" // try to enable continuous exposure if supported
-                }
-            });
-            const video = document.getElementById("video");
-            video.srcObject = videoStream;
-            await video.play();
+  // Update display
+  function updateDisplay() {
+    sensorDataEl.textContent = JSON.stringify(data, null, 2);
+  }
 
-            videoTrack = videoStream.getVideoTracks()[0];
+  // DeviceOrientationEvent
+  window.addEventListener("deviceorientation", e => {
+    data.deviceOrientation = {
+      alpha: e.alpha?.toFixed(4),
+      beta: e.beta?.toFixed(4),
+      gamma: e.gamma?.toFixed(4),
+      absolute: e.absolute
+    };
+    updateDisplay();
+  });
 
-            // Set autofocus and auto exposure initially
-            applyAutoFocus(isAutoFocusOn);
-            applyAutoExposure(isAutoExposureOn);
-        } catch (err) {
-            alert("Camera error: " + err.message + "\nTrying without exact constraints.");
-            try {
-                videoStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: width },
-                        height: { ideal: height },
-                        facingMode: "environment"
-                    }
-                });
-                const video = document.getElementById("video");
-                video.srcObject = videoStream;
-                await video.play();
+  // DeviceMotionEvent
+  window.addEventListener("devicemotion", e => {
+    const acc = e.acceleration;
+    const rot = e.rotationRate;
+    data.deviceMotion = {
+      acceleration: {
+        x: acc?.x?.toFixed(4),
+        y: acc?.y?.toFixed(4),
+        z: acc?.z?.toFixed(4)
+      },
+      rotationRate: {
+        alpha: rot?.alpha?.toFixed(4),
+        beta: rot?.beta?.toFixed(4),
+        gamma: rot?.gamma?.toFixed(4)
+      },
+      interval: e.interval
+    };
+    updateDisplay();
+  });
 
-                videoTrack = videoStream.getVideoTracks()[0];
+  // Geolocation
+  if ("geolocation" in navigator) {
+    navigator.geolocation.watchPosition(pos => {
+      data.geolocation = {
+        latitude: pos.coords.latitude.toFixed(8),
+        longitude: pos.coords.longitude.toFixed(8),
+        altitude: pos.coords.altitude?.toFixed(2) ?? null,
+        accuracy: pos.coords.accuracy.toFixed(2),
+        altitudeAccuracy: pos.coords.altitudeAccuracy?.toFixed(2) ?? null,
+        heading: pos.coords.heading?.toFixed(2) ?? null,
+        speed: pos.coords.speed?.toFixed(2) ?? null,
+        timestamp: pos.timestamp
+      };
+      updateDisplay();
+    }, err => {
+      data.geolocation = { error: err.message };
+      updateDisplay();
+    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+  } else {
+    data.geolocation = "Geolocation not supported";
+  }
 
-                applyAutoFocus(isAutoFocusOn);
-                applyAutoExposure(isAutoExposureOn);
-            } catch (err2) {
-                alert("Camera error: " + err2.message);
-            }
-        }
+  // AmbientLightSensor (experimental)
+  if ('AmbientLightSensor' in window) {
+    try {
+      const als = new AmbientLightSensor();
+      als.addEventListener('reading', () => {
+        data.ambientLight = als.illuminance.toFixed(2) + " lux";
+        updateDisplay();
+      });
+      als.addEventListener('error', event => {
+        data.ambientLight = "Error: " + event.error.name;
+        updateDisplay();
+      });
+      als.start();
+    } catch (e) {
+      data.ambientLight = "AmbientLightSensor start failed: " + e.message;
     }
+  } else {
+    data.ambientLight = "AmbientLightSensor not supported";
+  }
 
-    function applyAutoFocus(enable) {
-        if (!videoTrack) return;
-        const constraints = {
-            advanced: [{ focusMode: enable ? "continuous" : "manual" }]
+  // Helper to start generic sensors safely
+  async function startSensor(SensorClass, label) {
+    if (!(SensorClass in window)) {
+      data[label] = label + " not supported";
+      updateDisplay();
+      return;
+    }
+    try {
+      const sensor = new window[SensorClass]({ frequency: 10 });
+      sensor.addEventListener('reading', () => {
+        data[label] = {
+          x: sensor.x?.toFixed(4),
+          y: sensor.y?.toFixed(4),
+          z: sensor.z?.toFixed(4)
         };
-        videoTrack.applyConstraints(constraints).catch(e => {
-            console.warn("Failed to set autofocus mode:", e);
-        });
+        updateDisplay();
+      });
+      sensor.addEventListener('error', event => {
+        data[label] = `Error: ${event.error.name}`;
+        updateDisplay();
+      });
+      sensor.start();
+    } catch(e) {
+      data[label] = `Start failed: ${e.message}`;
+      updateDisplay();
     }
+  }
 
-    function applyAutoExposure(enable) {
-        if (!videoTrack) return;
-        const constraints = {
-            advanced: [{ exposureMode: enable ? "continuous" : "manual" }]
-        };
-        videoTrack.applyConstraints(constraints).catch(e => {
-            console.warn("Failed to set auto exposure mode:", e);
-        });
-    }
+  // Start Magnetometer, Gyroscope, Accelerometer
+  await startSensor('Magnetometer', 'magnetometer');
+  await startSensor('Gyroscope', 'gyroscope');
+  await startSensor('Accelerometer', 'accelerometer');
 
-    // On video tap: try to set focus & exposure point if supported
-    async function handleVideoTap(event) {
-        if (!videoTrack) return;
-
-        const rect = event.target.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width;
-        const y = (event.clientY - rect.top) / rect.height;
-
-        // Normalize to [0,1]
-        const point = { x: x, y: y };
-
-        // Try setting pointsOfInterest if supported
-        try {
-            const capabilities = videoTrack.getCapabilities();
-
-            if (capabilities.pointsOfInterest) {
-                // pointsOfInterest usually expects array of points with x,y between 0-1
-                await videoTrack.applyConstraints({
-                    advanced: [
-                        { focusMode: "manual", pointsOfInterest: [point] },
-                        { exposureMode: "manual", pointsOfInterest: [point] }
-                    ]
-                });
-                console.log("Focus and exposure set to point:", point);
-            } else {
-                // Fallback: toggle manual focus to trigger refocus
-                await videoTrack.applyConstraints({
-                    advanced: [{ focusMode: "manual" }]
-                });
-                setTimeout(() => {
-                    applyAutoFocus(isAutoFocusOn); // restore autofocus mode
-                }, 1500);
-                console.log("pointsOfInterest not supported, toggled manual focus");
-            }
-        } catch (e) {
-            console.warn("Error applying focus/exposure point:", e);
-        }
-    }
-
-    function capturePhoto() {
-        const canvas = document.getElementById("canvas");
-        const video = document.getElementById("video");
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0);
-
-        function fmtNum(n) {
-            if (n === undefined || n === null || isNaN(n)) return "NA";
-            return n.toFixed(8);
-        }
-
-        const o = currentSensor.orientation;
-        const p = currentSensor.position;
-
-        const sensorString =
-            `A${fmtNum(o.alpha)}_B${fmtNum(o.beta)}_G${fmtNum(o.gamma)}_` +
-            `Lat${fmtNum(p.latitude)}_Lon${fmtNum(p.longitude)}_Acc${fmtNum(p.accuracy)}`;
-
-        const timestamp = Date.now();
-
-        const filename = `photo_${sensorString}_${timestamp}.bmp`;
-
-        const bmpBlob = encodeBMP(ctx, canvas.width, canvas.height);
-
-        const url = URL.createObjectURL(bmpBlob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
-    // BMP encoder (24-bit)
-    function encodeBMP(ctx, width, height) {
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const pixels = imageData.data;
-        const rowSize = Math.floor((24 * width + 31) / 32) * 4;
-        const pixelDataSize = rowSize * height;
-        const fileSize = 54 + pixelDataSize;
-
-        const buffer = new ArrayBuffer(fileSize);
-        const dv = new DataView(buffer);
-
-        dv.setUint16(0, 0x4D42, true); // 'BM'
-        dv.setUint32(2, fileSize, true);
-        dv.setUint32(6, 0, true);
-        dv.setUint32(10, 54, true);
-
-        dv.setUint32(14, 40, true); // header size
-        dv.setInt32(18, width, true);
-        dv.setInt32(22, height, true);
-        dv.setUint16(26, 1, true);
-        dv.setUint16(28, 24, true);
-        dv.setUint32(30, 0, true);
-        dv.setUint32(34, pixelDataSize, true);
-        dv.setInt32(38, 0, true);
-        dv.setInt32(42, 0, true);
-        dv.setUint32(46, 0, true);
-        dv.setUint32(50, 0, true);
-
-        let pos = 54;
-        const padding = rowSize - width * 3;
-
-        for (let y = height - 1; y >= 0; y--) {
-            for (let x = 0; x < width; x++) {
-                const i = (y * width + x) * 4;
-                dv.setUint8(pos++, pixels[i + 2]); // Blue
-                dv.setUint8(pos++, pixels[i + 1]); // Green
-                dv.setUint8(pos++, pixels[i]);     // Red
-            }
-            pos += padding;
-        }
-        return new Blob([buffer], { type: "image/bmp" });
-    }
-
-    function updateSensorOutput() {
-        const out = document.getElementById("sensorOutput");
-        out.textContent = JSON.stringify(currentSensor, null, 2);
-    }
-
-    window.addEventListener("deviceorientation", e => {
-        currentSensor.orientation = {
-            alpha: e.alpha,
-            beta: e.beta,
-            gamma: e.gamma
-        };
-        updateSensorOutput();
-    });
-
-    navigator.geolocation.watchPosition(
-        pos => {
-            currentSensor.position = {
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                accuracy: pos.coords.accuracy
-            };
-            updateSensorOutput();
-        },
-        err => {
-            console.warn("GPS error", err);
-        },
-        { enableHighAccuracy: true }
-    );
-
-    document.getElementById("startCameraBtn").addEventListener("click", startCamera);
-    document.getElementById("toggleAutoFocusBtn").addEventListener("click", () => {
-        isAutoFocusOn = !isAutoFocusOn;
-        applyAutoFocus(isAutoFocusOn);
-        alert("Autofocus " + (isAutoFocusOn ? "enabled" : "disabled"));
-    });
-    document.getElementById("toggleAutoExposureBtn").addEventListener("click", () => {
-        isAutoExposureOn = !isAutoExposureOn;
-        applyAutoExposure(isAutoExposureOn);
-        alert("Auto exposure " + (isAutoExposureOn ? "enabled" : "disabled"));
-    });
-
-    // Listen for tap on video to try focus/exposure at tap point
-    document.getElementById("video").addEventListener("click", handleVideoTap);
+  updateDisplay();
+})();
 </script>
+
 </body>
 </html>
