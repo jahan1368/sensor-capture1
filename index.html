@@ -26,10 +26,10 @@
     max-height: 300px;
     overflow-y: auto;
   }
-  button {
+  button, select {
     font-size: 1rem;
-    padding: 0.5em 1em;
-    margin: 1em 0;
+    padding: 0.5em;
+    margin: 0.5em 0;
     cursor: pointer;
   }
 </style>
@@ -37,17 +37,31 @@
 <body>
 
 <h1>📸 Sensor Capture</h1>
-<video id="video" autoplay playsinline muted></video>
+<select id="cameraSelect"></select>
+<br />
+<label>Resolution:
+  <select id="resolutionSelect">
+    <option value="640x480">640x480</option>
+    <option value="1280x720">1280x720</option>
+    <option value="1920x1080">1920x1080</option>
+  </select>
+</label>
+<br />
+<button onclick="startCamera()">🎥 Start Camera</button>
 <button onclick="capturePhoto()">📷 Capture Photo</button>
 <h2>Sensor Data</h2>
 <pre id="sensorData">Waiting for sensor data...</pre>
 <canvas id="canvas" style="display:none;"></canvas>
+<video id="video" autoplay playsinline muted></video>
 
 <script>
 (async () => {
   const videoEl = document.getElementById("video");
   const sensorDataEl = document.getElementById("sensorData");
   const canvas = document.getElementById("canvas");
+  const resolutionSelect = document.getElementById("resolutionSelect");
+  const cameraSelect = document.getElementById("cameraSelect");
+  let currentStream = null;
   const data = {
     deviceOrientation: {},
     deviceMotion: {},
@@ -64,13 +78,55 @@
     sensorDataEl.textContent = JSON.stringify(data, null, 2);
   }
 
-  // Start video
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    videoEl.srcObject = stream;
-  } catch (e) {
-    sensorDataEl.textContent = "Camera error: " + e.message;
+  async function enumerateCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+    cameraSelect.innerHTML = '';
+    videoDevices.forEach((device, index) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.text = device.label || `Camera ${index + 1}`;
+      cameraSelect.appendChild(option);
+    });
   }
+
+  window.startCamera = async () => {
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+    }
+
+    const [width, height] = resolutionSelect.value.split('x').map(Number);
+    const constraints = {
+      video: {
+        deviceId: { exact: cameraSelect.value },
+        width: { exact: width },
+        height: { exact: height },
+        focusMode: "continuous",
+        exposureMode: "continuous",
+        zoom: true
+      }
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      videoEl.srcObject = stream;
+      currentStream = stream;
+
+      const track = stream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities();
+      const settings = track.getSettings();
+
+      if (capabilities.zoom) {
+        track.applyConstraints({ advanced: [{ zoom: capabilities.zoom.max }] });
+      }
+
+    } catch (e) {
+      sensorDataEl.textContent = "Camera error: " + e.message;
+    }
+  };
+
+  await enumerateCameras();
+  await startCamera();
 
   // Orientation
   window.addEventListener("deviceorientation", e => {
@@ -134,7 +190,6 @@
     }
   }
 
-  // Generic sensor starter
   async function startSensor(SensorClass, key) {
     if (!(SensorClass in window)) {
       data[key] = key + " not supported";
