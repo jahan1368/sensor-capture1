@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sensor Camera with Resolution and BMP Save</title>
+<title>Sensor Camera with Touch Autofocus & Auto Exposure</title>
 <style>
     body {
         font-family: sans-serif;
@@ -17,6 +17,8 @@
         max-width: 600px;
         border-radius: 10px;
         margin-bottom: 1em;
+        touch-action: manipulation;
+        user-select: none;
     }
     .controls, .sensor-data {
         margin: 1em auto;
@@ -35,6 +37,15 @@
         padding: 0.5em;
         margin-top: 0.5em;
         width: 100%;
+        cursor: pointer;
+    }
+    .inline-buttons button {
+        width: 48%;
+        margin-right: 2%;
+        margin-top: 0.5em;
+    }
+    .inline-buttons button:last-child {
+        margin-right: 0;
     }
 </style>
 </head>
@@ -50,7 +61,14 @@
             <option value="2560x1440">2560 x 1440</option>
         </select>
         <button id="startCameraBtn">Start Camera</button>
+
+        <div class="inline-buttons">
+            <button id="toggleAutoFocusBtn">Toggle Autofocus</button>
+            <button id="toggleAutoExposureBtn">Toggle Auto Exposure</button>
+        </div>
+
         <button onclick="capturePhoto()" style="margin-top: 1em;">Capture Photo (BMP)</button>
+        <small style="color:#aaa;">* Tap on video to try focus/expose on that spot *</small>
     </div>
 
     <video id="video" autoplay playsinline muted></video>
@@ -65,6 +83,9 @@
 <script>
     let videoStream;
     let currentSensor = { orientation: {}, position: {} };
+    let videoTrack;
+    let isAutoFocusOn = true;
+    let isAutoExposureOn = true;
 
     async function startCamera() {
         const select = document.getElementById("resolutionSelect");
@@ -79,12 +100,20 @@
                 video: {
                     width: { exact: width },
                     height: { exact: height },
-                    facingMode: "environment"
+                    facingMode: "environment",
+                    focusMode: "continuous", // try to enable continuous focus if supported
+                    exposureMode: "continuous" // try to enable continuous exposure if supported
                 }
             });
             const video = document.getElementById("video");
             video.srcObject = videoStream;
             await video.play();
+
+            videoTrack = videoStream.getVideoTracks()[0];
+
+            // Set autofocus and auto exposure initially
+            applyAutoFocus(isAutoFocusOn);
+            applyAutoExposure(isAutoExposureOn);
         } catch (err) {
             alert("Camera error: " + err.message + "\nTrying without exact constraints.");
             try {
@@ -98,10 +127,110 @@
                 const video = document.getElementById("video");
                 video.srcObject = videoStream;
                 await video.play();
+
+                videoTrack = videoStream.getVideoTracks()[0];
+
+                applyAutoFocus(isAutoFocusOn);
+                applyAutoExposure(isAutoExposureOn);
             } catch (err2) {
                 alert("Camera error: " + err2.message);
             }
         }
+    }
+
+    function applyAutoFocus(enable) {
+        if (!videoTrack) return;
+        const constraints = {
+            advanced: [{ focusMode: enable ? "continuous" : "manual" }]
+        };
+        videoTrack.applyConstraints(constraints).catch(e => {
+            console.warn("Failed to set autofocus mode:", e);
+        });
+    }
+
+    function applyAutoExposure(enable) {
+        if (!videoTrack) return;
+        const constraints = {
+            advanced: [{ exposureMode: enable ? "continuous" : "manual" }]
+        };
+        videoTrack.applyConstraints(constraints).catch(e => {
+            console.warn("Failed to set auto exposure mode:", e);
+        });
+    }
+
+    // On video tap: try to set focus & exposure point if supported
+    async function handleVideoTap(event) {
+        if (!videoTrack) return;
+
+        const rect = event.target.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+
+        // Normalize to [0,1]
+        const point = { x: x, y: y };
+
+        // Try setting pointsOfInterest if supported
+        try {
+            const capabilities = videoTrack.getCapabilities();
+
+            if (capabilities.pointsOfInterest) {
+                // pointsOfInterest usually expects array of points with x,y between 0-1
+                await videoTrack.applyConstraints({
+                    advanced: [
+                        { focusMode: "manual", pointsOfInterest: [point] },
+                        { exposureMode: "manual", pointsOfInterest: [point] }
+                    ]
+                });
+                console.log("Focus and exposure set to point:", point);
+            } else {
+                // Fallback: toggle manual focus to trigger refocus
+                await videoTrack.applyConstraints({
+                    advanced: [{ focusMode: "manual" }]
+                });
+                setTimeout(() => {
+                    applyAutoFocus(isAutoFocusOn); // restore autofocus mode
+                }, 1500);
+                console.log("pointsOfInterest not supported, toggled manual focus");
+            }
+        } catch (e) {
+            console.warn("Error applying focus/exposure point:", e);
+        }
+    }
+
+    function capturePhoto() {
+        const canvas = document.getElementById("canvas");
+        const video = document.getElementById("video");
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0);
+
+        function fmtNum(n) {
+            if (n === undefined || n === null || isNaN(n)) return "NA";
+            return n.toFixed(8);
+        }
+
+        const o = currentSensor.orientation;
+        const p = currentSensor.position;
+
+        const sensorString =
+            `A${fmtNum(o.alpha)}_B${fmtNum(o.beta)}_G${fmtNum(o.gamma)}_` +
+            `Lat${fmtNum(p.latitude)}_Lon${fmtNum(p.longitude)}_Acc${fmtNum(p.accuracy)}`;
+
+        const timestamp = Date.now();
+
+        const filename = `photo_${sensorString}_${timestamp}.bmp`;
+
+        const bmpBlob = encodeBMP(ctx, canvas.width, canvas.height);
+
+        const url = URL.createObjectURL(bmpBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
     }
 
     // BMP encoder (24-bit)
@@ -147,42 +276,6 @@
         return new Blob([buffer], { type: "image/bmp" });
     }
 
-    function capturePhoto() {
-        const canvas = document.getElementById("canvas");
-        const video = document.getElementById("video");
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0);
-
-        function fmtNum(n) {
-            if (n === undefined || n === null || isNaN(n)) return "NA";
-            return n.toFixed(8);
-        }
-
-        const o = currentSensor.orientation;
-        const p = currentSensor.position;
-
-        const sensorString =
-            `A${fmtNum(o.alpha)}_B${fmtNum(o.beta)}_G${fmtNum(o.gamma)}_` +
-            `Lat${fmtNum(p.latitude)}_Lon${fmtNum(p.longitude)}_Acc${fmtNum(p.accuracy)}`;
-
-        const timestamp = Date.now();
-
-        const filename = `photo_${sensorString}_${timestamp}.bmp`;
-
-        const bmpBlob = encodeBMP(ctx, canvas.width, canvas.height);
-
-        const url = URL.createObjectURL(bmpBlob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
     function updateSensorOutput() {
         const out = document.getElementById("sensorOutput");
         out.textContent = JSON.stringify(currentSensor, null, 2);
@@ -213,6 +306,19 @@
     );
 
     document.getElementById("startCameraBtn").addEventListener("click", startCamera);
+    document.getElementById("toggleAutoFocusBtn").addEventListener("click", () => {
+        isAutoFocusOn = !isAutoFocusOn;
+        applyAutoFocus(isAutoFocusOn);
+        alert("Autofocus " + (isAutoFocusOn ? "enabled" : "disabled"));
+    });
+    document.getElementById("toggleAutoExposureBtn").addEventListener("click", () => {
+        isAutoExposureOn = !isAutoExposureOn;
+        applyAutoExposure(isAutoExposureOn);
+        alert("Auto exposure " + (isAutoExposureOn ? "enabled" : "disabled"));
+    });
+
+    // Listen for tap on video to try focus/exposure at tap point
+    document.getElementById("video").addEventListener("click", handleVideoTap);
 </script>
 </body>
 </html>
