@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Camera PWA</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2196F3">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: white;
+        }
+
+        .header {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .camera-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            max-width: 100%;
+        }
+
+        #videoElement {
+            width: 100%;
+            max-width: 600px;
+            height: 400px;
+            object-fit: cover;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin: 0 auto 20px auto;
+            background: #333;
+        }
+
+        .sensor-data {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .download-btn {
+            background: linear-gradient(45deg, #4ecdc4, #44a08d);
+        }
+
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 10px;
+            background: rgba(0,0,0,0.2);
+        }
+
+        .photo-count {
+            background: rgba(76, 175, 80, 0.2);
+            border-radius: 10px;
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .error {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid rgba(244, 67, 54, 0.5);
+        }
+
+        .success {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .camera-container {
+                padding: 10px;
+            }
+            
+            #videoElement {
+                height: 300px;
+            }
+            
+            button {
+                padding: 12px 20px;
+                font-size: 14px;
+            }
+            
+            .sensor-data {
+                font-size: 10px;
+                padding: 15px;
+            }
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 4px solid #fff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📱 Sensor Camera PWA</h1>
+        <p>Perfect sync for COLMAP pipeline</p>
+    </div>
+
+    <div class="camera-container">
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Initializing camera and sensors...</p>
+        </div>
+
+        <video id="videoElement" autoplay muted playsinline></video>
+
+        <div class="photo-count">
+            📸 Photos captured: <span id="photoCount">0</span>
+        </div>
+
+        <div class="sensor-data" id="sensorData">
+            🎯 Sensor data will appear here...<br>
+            📍 GPS: Waiting for location...<br>
+            📊 IMU: Ready to record...
+        </div>
+
+        <div class="controls">
+            <button id="requestPermissionBtn" onclick="requestAllPermissions()" style="background: linear-gradient(45deg, #9C27B0, #673AB7);">🔐 GRANT PERMISSIONS</button>
+            <button id="captureBtn" onclick="capturePhoto()" style="display: none;">📷 CAPTURE PHOTO</button>
+            <button id="downloadBtn" class="download-btn" onclick="downloadData()" disabled>💾 DOWNLOAD DATA</button>
+        </div>
+
+        <div class="status" id="status">
+            Ready to capture photos with synchronized sensor data!
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let videoStream = null;
+        let sensorData = [];
+        let photoCount = 0;
+        let currentSensorReading = {
+            timestamp: 0,
+            acceleration: { x: 0, y: 0, z: 0 },
+            gyroscope: { x: 0, y: 0, z: 0 },
+            location: { latitude: 0, longitude: 0, altitude: 0, accuracy: 0 }
+        };
+
+        // Request all permissions explicitly
+        async function requestAllPermissions() {
+            const permissionBtn = document.getElementById('requestPermissionBtn');
+            const captureBtn = document.getElementById('captureBtn');
+            
+            permissionBtn.textContent = '🔄 Requesting permissions...';
+            permissionBtn.disabled = true;
+            
+            try {
+                // 1. Request camera permission explicitly
+                updateStatus('📷 Requesting camera access...', '');
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream.getTracks().forEach(track => track.stop()); // Stop immediately after permission
+                updateStatus('✅ Camera permission granted!', 'success');
+                
+                // 2. Request location permission
+                updateStatus('📍 Requesting location access...', '');
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    });
+                });
+                updateStatus('✅ Location permission granted!', 'success');
+                
+                // 3. Request motion sensors (iOS specific)
+                if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                    updateStatus('📊 Requesting motion sensor access...', '');
+                    const motionPermission = await DeviceMotionEvent.requestPermission();
+                    if (motionPermission === 'granted') {
+                        updateStatus('✅ Motion sensor permission granted!', 'success');
+                    } else {
+                        throw new Error('Motion sensor permission denied');
+                    }
+                }
+                
+                // Initialize everything after permissions granted
+                await initializeCamera();
+                await initializeSensors();
+                await initializeGPS();
+                
+                // Show capture button, hide permission button
+                permissionBtn.style.display = 'none';
+                captureBtn.style.display = 'inline-block';
+                
+                updateStatus('🎉 All permissions granted! Ready to capture!', 'success');
+                
+            } catch (error) {
+                permissionBtn.disabled = false;
+                permissionBtn.textContent = '🔐 GRANT PERMISSIONS';
+                
+                if (error.name === 'NotAllowedError') {
+                    updateStatus('❌ Permission denied. Please manually allow camera and location in browser settings.', 'error');
+                    showManualPermissionInstructions();
+                } else {
+                    updateStatus('❌ Error: ' + error.message, 'error');
+                }
+            }
+        }
+        
+        // Show manual permission instructions
+        function showManualPermissionInstructions() {
+            const instructions = document.createElement('div');
+            instructions.innerHTML = `
+                <div style="background: rgba(255,152,0,0.2); border: 1px solid rgba(255,152,0,0.5); border-radius: 10px; padding: 20px; margin: 20px 0;">
+                    <h3>🔧 Manual Permission Setup</h3>
+                    <p><strong>Chrome Mobile:</strong></p>
+                    <ol style="margin-left: 20px;">
+                        <li>Tap the address bar</li>
+                        <li>Look for camera/location icons</li>
+                        <li>Tap each icon and select "Allow"</li>
+                        <li>Refresh the page</li>
+                    </ol>
+                    <p><strong>Or in Chrome Settings:</strong></p>
+                    <ol style="margin-left: 20px;">
+                        <li>Chrome menu → Settings → Site settings</li>
+                        <li>Camera → Allow</li>
+                        <li>Location → Allow</li>
+                    </ol>
+                    <button onclick="location.reload()" style="background: #4CAF50; margin-top: 10px;">🔄 REFRESH PAGE</button>
+                </div>
+            `;
+            document.querySelector('.camera-container').appendChild(instructions);
+        }
+
+        // Setup file input as camera alternative
+        function setupFileInput() {
+            const fileInput = document.getElementById('fileInput');
+            fileInput.addEventListener('change', handleFileSelection);
+        }
+
+        // Handle file selection
+        function handleFileSelection(event) {
+            const file = event.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                // Create timestamp and sensor data for uploaded image
+                const captureTimestamp = Date.now();
+                const filename = `IMG_${new Date(captureTimestamp).toISOString().replace(/[:.]/g, '_')}_${String(photoCount).padStart(3, '0')}.jpg`;
+                
+                // Store synchronized sensor data
+                const sensorDataPoint = {
+                    timestamp: captureTimestamp,
+                    filename: filename,
+                    acceleration: { ...currentSensorReading.acceleration },
+                    gyroscope: { ...currentSensorReading.gyroscope },
+                    location: { ...currentSensorReading.location },
+                    orientation: currentSensorReading.orientation || { alpha: 0, beta: 0, gamma: 0 }
+                };
+                
+                sensorData.push(sensorDataPoint);
+                
+                // Store image
+                if (!window.capturedImages) window.capturedImages = [];
+                window.capturedImages.push({
+                    filename: filename,
+                    blob: file,
+                    timestamp: captureTimestamp
+                });
+                
+                photoCount++;
+                document.getElementById('photoCount').textContent = photoCount;
+                document.getElementById('downloadBtn').disabled = false;
+                
+                updateStatus(`✅ Photo ${photoCount} processed with sensor data!`, 'success');
+                
+                // Reset file input
+                fileInput.value = '';
+            }
+        }
+
+        // Initialize camera with fallback options
+        async function initializeCamera() {
+            try {
+                // Check if getUserMedia is available
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Camera API not available - try HTTPS or newer browser');
+                }
+
+                // Try different constraint configurations
+                const constraintOptions = [
+                    {
+                        video: {
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 },
+                            facingMode: { ideal: 'environment' }
+                        }
+                    },
+                    {
+                        video: {
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                            facingMode: 'environment'
+                        }
+                    },
+                    {
+                        video: {
+                            width: 640,
+                            height: 480
+                        }
+                    },
+                    { video: true } // Basic fallback
+                ];
+
+                let videoStream = null;
+                let lastError = null;
+
+                for (const constraints of constraintOptions) {
+                    try {
+                        console.log('Trying camera constraints:', constraints);
+                        videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                        break;
+                    } catch (err) {
+                        console.warn('Camera constraint failed:', err);
+                        lastError = err;
+                        continue;
+                    }
+                }
+
+                if (!videoStream) {
+                    throw new Error(`Camera access failed. ${lastError?.message || 'Unknown error'}`);
+                }
+
+                const videoElement = document.getElementById('videoElement');
+                videoElement.srcObject = videoStream;
+                
+                return new Promise((resolve, reject) => {
+                    videoElement.onloadedmetadata = () => {
+                        console.log('Camera initialized successfully');
+                        resolve();
+                    };
+                    videoElement.onerror = (err) => {
+                        reject(new Error('Video element error: ' + err.message));
+                    };
+                    
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        reject(new Error('Camera initialization timeout'));
+                    }, 10000);
+                });
+            } catch (error) {
+                console.error('Camera initialization error:', error);
+                
+                // Provide specific error messages based on error type
+                if (error.name === 'NotAllowedError') {
+                    throw new Error('Camera permission denied. Please allow camera access and refresh.');
+                } else if (error.name === 'NotFoundError') {
+                    throw new Error('No camera found on device.');
+                } else if (error.name === 'NotReadableError') {
+                    throw new Error('Camera is being used by another app.');
+                } else if (error.name === 'SecurityError') {
+                    throw new Error('Camera access requires HTTPS. Try: https://codepen.io or local HTTPS server');
+                } else {
+                    throw new Error(`Camera error: ${error.message}`);
+                }
+            }
+        }
+
+        // Initialize sensors
+        async function initializeSensors() {
+            if (typeof DeviceMotionEvent !== 'undefined') {
+                // Request permission on iOS
+                if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        throw new Error('Motion sensor permission denied');
+                    }
+                }
+
+                window.addEventListener('devicemotion', handleSensorData);
+                window.addEventListener('deviceorientation', handleOrientationData);
+            } else {
+                console.warn('Motion sensors not available');
+            }
+        }
+
+        // Initialize GPS
+        async function initializeGPS() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(
+                    (position) => {
+                        currentSensorReading.location = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude,
+                            altitude: position.coords.altitude || 0,
+                            accuracy: position.coords.accuracy
+                        };
+                    },
+                    (error) => {
+                        console.warn('GPS error:', error);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 1000,
+                        timeout: 5000
+                    }
+                );
+            } else {
+                console.warn('GPS not available');
+            }
+        }
+
+        // Handle sensor data
+        function handleSensorData(event) {
+            if (event.acceleration && event.rotationRate) {
+                currentSensorReading.timestamp = Date.now();
+                currentSensorReading.acceleration = {
+                    x: event.acceleration.x || 0,
+                    y: event.acceleration.y || 0,
+                    z: event.acceleration.z || 0
+                };
+                currentSensorReading.gyroscope = {
+                    x: event.rotationRate.alpha || 0,
+                    y: event.rotationRate.beta || 0,
+                    z: event.rotationRate.gamma || 0
+                };
+                updateSensorDisplay();
+            }
+        }
+
+        // Handle orientation data
+        function handleOrientationData(event) {
+            // Additional orientation data if needed
+            currentSensorReading.orientation = {
+                alpha: event.alpha || 0,
+                beta: event.beta || 0,
+                gamma: event.gamma || 0
+            };
+        }
+
+        // Update sensor display
+        function updateSensorDisplay() {
+            const sensorDataElement = document.getElementById('sensorData');
+            const acc = currentSensorReading.acceleration;
+            const gyro = currentSensorReading.gyroscope;
+            const loc = currentSensorReading.location;
+            
+            sensorDataElement.innerHTML = `
+                🎯 <strong>Accelerometer:</strong> X: ${acc.x.toFixed(3)}, Y: ${acc.y.toFixed(3)}, Z: ${acc.z.toFixed(3)}<br>
+                🔄 <strong>Gyroscope:</strong> X: ${gyro.x.toFixed(3)}, Y: ${gyro.y.toFixed(3)}, Z: ${gyro.z.toFixed(3)}<br>
+                📍 <strong>GPS:</strong> ${loc.latitude.toFixed(6)}, ${loc.longitude.toFixed(6)} (±${loc.accuracy.toFixed(1)}m)<br>
+                📏 <strong>Altitude:</strong> ${loc.altitude.toFixed(1)}m<br>
+                ⏰ <strong>Last Update:</strong> ${new Date(currentSensorReading.timestamp).toLocaleTimeString()}
+            `;
+        }
+
+        // Capture photo with synchronized sensor data
+        async function capturePhoto() {
+            try {
+                const captureBtn = document.getElementById('captureBtn');
+                captureBtn.disabled = true;
+                captureBtn.textContent = '📸 CAPTURING...';
+
+                // Get current timestamp for perfect sync
+                const captureTimestamp = Date.now();
+                
+                // Capture image from video
+                const canvas = document.createElement('canvas');
+                const videoElement = document.getElementById('videoElement');
+                canvas.width = videoElement.videoWidth;
+                canvas.height = videoElement.videoHeight;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(videoElement, 0, 0);
+                
+                // Convert to blob
+                const imageBlob = await new Promise(resolve => {
+                    canvas.toBlob(resolve, 'image/jpeg', 0.9);
+                });
+                
+                // Create filename with timestamp
+                const filename = `IMG_${new Date(captureTimestamp).toISOString().replace(/[:.]/g, '_')}_${String(photoCount).padStart(3, '0')}.jpg`;
+                
+                // Store synchronized sensor data
+                const sensorDataPoint = {
+                    timestamp: captureTimestamp,
+                    filename: filename,
+                    acceleration: { ...currentSensorReading.acceleration },
+                    gyroscope: { ...currentSensorReading.gyroscope },
+                    location: { ...currentSensorReading.location },
+                    orientation: currentSensorReading.orientation || { alpha: 0, beta: 0, gamma: 0 }
+                };
+                
+                sensorData.push(sensorDataPoint);
+                
+                // Store image (in memory for download)
+                if (!window.capturedImages) window.capturedImages = [];
+                window.capturedImages.push({
+                    filename: filename,
+                    blob: imageBlob,
+                    timestamp: captureTimestamp
+                });
+                
+                photoCount++;
+                document.getElementById('photoCount').textContent = photoCount;
+                document.getElementById('downloadBtn').disabled = false;
+                
+                updateStatus(`✅ Photo ${photoCount} captured with perfect sensor sync!`, 'success');
+                
+            } catch (error) {
+                updateStatus('❌ Error capturing photo: ' + error.message, 'error');
+            } finally {
+                const captureBtn = document.getElementById('captureBtn');
+                captureBtn.disabled = false;
+                captureBtn.textContent = '📷 CAPTURE PHOTO';
+            }
+        }
+
+        // Download collected data
+        function downloadData() {
+            if (sensorData.length === 0) return;
+            
+            // Create CSV data
+            const csvHeaders = 'timestamp,filename,acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z,latitude,longitude,altitude,accuracy,orientation_alpha,orientation_beta,orientation_gamma\n';
+            const csvData = sensorData.map(data => 
+                `${data.timestamp},${data.filename},${data.acceleration.x},${data.acceleration.y},${data.acceleration.z},${data.gyroscope.x},${data.gyroscope.y},${data.gyroscope.z},${data.location.latitude},${data.location.longitude},${data.location.altitude},${data.location.accuracy},${data.orientation.alpha},${data.orientation.beta},${data.orientation.gamma}`
+            ).join('\n');
+            
+            // Download CSV
+            const csvBlob = new Blob([csvHeaders + csvData], { type: 'text/csv' });
+            const csvUrl = URL.createObjectURL(csvBlob);
+            downloadFile(csvUrl, `sensor_data_${new Date().toISOString().split('T')[0]}.csv`);
+            
+            // Download images as ZIP (simplified - individual downloads)
+            if (window.capturedImages) {
+                window.capturedImages.forEach(imageData => {
+                    const imageUrl = URL.createObjectURL(imageData.blob);
+                    downloadFile(imageUrl, imageData.filename);
+                });
+            }
+            
+            updateStatus(`✅ Downloaded ${photoCount} photos and sensor data!`, 'success');
+        }
+
+        // Helper function to download files
+        function downloadFile(url, filename) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Update status display
+        function updateStatus(message, type = '') {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.className = 'status ' + type;
+        }
+
+        // Initialize app when page loads
+        window.addEventListener('load', initializeApp);
+
+        // Service Worker for PWA functionality
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => console.log('SW registered'))
+                    .catch(error => console.log('SW registration failed'));
+            });
+        }
+    </script>
+</body>
+</html>
