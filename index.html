@@ -18,7 +18,7 @@
         border-radius: 10px;
         margin-bottom: 1em;
     }
-    .controls, .sensor-data, .camera-settings {
+    .controls, .sensor-data {
         margin: 1em auto;
         max-width: 600px;
         background: #222;
@@ -71,7 +71,6 @@
         const [width, height] = select.value.split('x').map(Number);
 
         if (videoStream) {
-            // Stop existing stream tracks before starting new
             videoStream.getTracks().forEach(t => t.stop());
         }
 
@@ -88,7 +87,6 @@
             await video.play();
         } catch (err) {
             alert("Camera error: " + err.message + "\nTrying without exact constraints.");
-            // Retry without exact constraints if failed (some devices don’t support exact)
             try {
                 videoStream = await navigator.mediaDevices.getUserMedia({
                     video: {
@@ -106,8 +104,7 @@
         }
     }
 
-    // BMP encoding helper function
-    // Reference: https://stackoverflow.com/questions/36522565/how-to-save-a-canvas-image-as-bmp
+    // BMP encoder (24-bit)
     function encodeBMP(ctx, width, height) {
         const imageData = ctx.getImageData(0, 0, width, height);
         const pixels = imageData.data;
@@ -118,26 +115,23 @@
         const buffer = new ArrayBuffer(fileSize);
         const dv = new DataView(buffer);
 
-        // BITMAPFILEHEADER
         dv.setUint16(0, 0x4D42, true); // 'BM'
         dv.setUint32(2, fileSize, true);
         dv.setUint32(6, 0, true);
         dv.setUint32(10, 54, true);
 
-        // BITMAPINFOHEADER
         dv.setUint32(14, 40, true); // header size
         dv.setInt32(18, width, true);
         dv.setInt32(22, height, true);
-        dv.setUint16(26, 1, true); // planes
-        dv.setUint16(28, 24, true); // bits per pixel
-        dv.setUint32(30, 0, true); // compression = none
+        dv.setUint16(26, 1, true);
+        dv.setUint16(28, 24, true);
+        dv.setUint32(30, 0, true);
         dv.setUint32(34, pixelDataSize, true);
-        dv.setInt32(38, 0, true); // pixels per meter X
-        dv.setInt32(42, 0, true); // pixels per meter Y
-        dv.setUint32(46, 0, true); // colors used
-        dv.setUint32(50, 0, true); // important colors
+        dv.setInt32(38, 0, true);
+        dv.setInt32(42, 0, true);
+        dv.setUint32(46, 0, true);
+        dv.setUint32(50, 0, true);
 
-        // Pixel data (bottom-up)
         let pos = 54;
         const padding = rowSize - width * 3;
 
@@ -157,17 +151,15 @@
         const canvas = document.getElementById("canvas");
         const video = document.getElementById("video");
 
-        // Set canvas size to video size
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0);
 
-        // Format sensor values for filename
         function fmtNum(n) {
             if (n === undefined || n === null || isNaN(n)) return "NA";
-            return n.toFixed(2).replace(/\./g, "_");
+            return n.toFixed(8);
         }
 
         const o = currentSensor.orientation;
@@ -181,7 +173,6 @@
 
         const filename = `photo_${sensorString}_${timestamp}.bmp`;
 
-        // Encode BMP and save
         const bmpBlob = encodeBMP(ctx, canvas.width, canvas.height);
 
         const url = URL.createObjectURL(bmpBlob);
