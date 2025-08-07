@@ -250,3 +250,255 @@
 
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sensor Camera with Filename Capture</title>
+<style>
+  body {
+    font-family: monospace;
+    background: #111;
+    color: #eee;
+    padding: 1em;
+    max-width: 600px;
+    margin: auto;
+  }
+  video {
+    width: 100%;
+    border-radius: 8px;
+    margin-bottom: 1em;
+    background: black;
+  }
+  pre {
+    background: #222;
+    padding: 1em;
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  button, select {
+    font-size: 1rem;
+    padding: 0.5em;
+    margin: 0.5em 0;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<h1>📸 Sensor Capture</h1>
+<select id="cameraSelect"></select>
+<br />
+<label>Resolution:
+  <select id="resolutionSelect">
+    <option value="640x480">640x480</option>
+    <option value="1280x720">1280x720</option>
+    <option value="1920x1080">1920x1080</option>
+  </select>
+</label>
+<br />
+<button onclick="startCamera()">🎥 Start Camera</button>
+<button onclick="capturePhoto()">📷 Capture Photo</button>
+<h2>Sensor Data</h2>
+<pre id="sensorData">Waiting for sensor data...</pre>
+<canvas id="canvas" style="display:none;"></canvas>
+<video id="video" autoplay playsinline muted></video>
+
+<script>
+(async () => {
+  const videoEl = document.getElementById("video");
+  const sensorDataEl = document.getElementById("sensorData");
+  const canvas = document.getElementById("canvas");
+  const resolutionSelect = document.getElementById("resolutionSelect");
+  const cameraSelect = document.getElementById("cameraSelect");
+  let currentStream = null;
+  const data = {
+    deviceOrientation: {},
+    deviceMotion: {},
+    geolocation: {},
+    ambientLight: null,
+    magnetometer: null,
+    gyroscope: null,
+    accelerometer: null
+  };
+
+  const fmt = v => (v == null || isNaN(v)) ? "NA" : parseFloat(v).toFixed(8);
+
+  function updateDisplay() {
+    sensorDataEl.textContent = JSON.stringify(data, null, 2);
+  }
+
+  async function enumerateCameras() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+    cameraSelect.innerHTML = '';
+    videoDevices.forEach((device, index) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.text = device.label || `Camera ${index + 1}`;
+      cameraSelect.appendChild(option);
+    });
+  }
+
+  window.startCamera = async () => {
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+    }
+
+    const [width, height] = resolutionSelect.value.split('x').map(Number);
+    const constraints = {
+      video: {
+        deviceId: { exact: cameraSelect.value },
+        width: { exact: width },
+        height: { exact: height },
+        focusMode: "continuous",
+        exposureMode: "continuous",
+        zoom: true
+      }
+    };
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      videoEl.srcObject = stream;
+      currentStream = stream;
+
+      const track = stream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities();
+      const settings = track.getSettings();
+
+      if (capabilities.zoom) {
+        track.applyConstraints({ advanced: [{ zoom: capabilities.zoom.max }] });
+      }
+
+    } catch (e) {
+      sensorDataEl.textContent = "Camera error: " + e.message;
+    }
+  };
+
+  await enumerateCameras();
+  await startCamera();
+
+  // Orientation
+  window.addEventListener("deviceorientation", e => {
+    data.deviceOrientation = {
+      alpha: fmt(e.alpha),
+      beta: fmt(e.beta),
+      gamma: fmt(e.gamma),
+      absolute: e.absolute
+    };
+    updateDisplay();
+  });
+
+  // Motion
+  window.addEventListener("devicemotion", e => {
+    data.deviceMotion = {
+      acceleration: {
+        x: fmt(e.acceleration?.x),
+        y: fmt(e.acceleration?.y),
+        z: fmt(e.acceleration?.z)
+      },
+      rotationRate: {
+        alpha: fmt(e.rotationRate?.alpha),
+        beta: fmt(e.rotationRate?.beta),
+        gamma: fmt(e.rotationRate?.gamma)
+      },
+      interval: e.interval
+    };
+    updateDisplay();
+  });
+
+  // Geolocation
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(pos => {
+      data.geolocation = {
+        latitude: fmt(pos.coords.latitude),
+        longitude: fmt(pos.coords.longitude),
+        accuracy: fmt(pos.coords.accuracy)
+      };
+      updateDisplay();
+    }, err => {
+      data.geolocation = { error: err.message };
+      updateDisplay();
+    }, { enableHighAccuracy: true });
+  }
+
+  // Ambient Light Sensor
+  if ('AmbientLightSensor' in window) {
+    try {
+      const sensor = new AmbientLightSensor();
+      sensor.onreading = () => {
+        data.ambientLight = fmt(sensor.illuminance);
+        updateDisplay();
+      };
+      sensor.onerror = e => {
+        data.ambientLight = "Error: " + e.error.name;
+        updateDisplay();
+      };
+      sensor.start();
+    } catch (e) {
+      data.ambientLight = "Sensor init failed";
+    }
+  }
+
+  async function startSensor(SensorClass, key) {
+    if (!(SensorClass in window)) {
+      data[key] = key + " not supported";
+      return;
+    }
+    try {
+      const sensor = new window[SensorClass]({ frequency: 10 });
+      sensor.addEventListener('reading', () => {
+        data[key] = {
+          x: fmt(sensor.x),
+          y: fmt(sensor.y),
+          z: fmt(sensor.z)
+        };
+        updateDisplay();
+      });
+      sensor.start();
+    } catch (e) {
+      data[key] = "Start failed: " + e.message;
+    }
+  }
+
+  await startSensor('Magnetometer', 'magnetometer');
+  await startSensor('Gyroscope', 'gyroscope');
+  await startSensor('Accelerometer', 'accelerometer');
+
+  window.capturePhoto = function () {
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(videoEl, 0, 0);
+
+    const d = data;
+    const nameParts = [
+      fmt(d.geolocation.latitude),
+      fmt(d.geolocation.longitude),
+      fmt(d.deviceOrientation.alpha),
+      fmt(d.deviceOrientation.beta),
+      fmt(d.deviceOrientation.gamma),
+      fmt(d.ambientLight),
+      fmt(d.magnetometer?.x),
+      fmt(d.magnetometer?.y),
+      fmt(d.magnetometer?.z),
+      Date.now()
+    ];
+
+    const filename = `photo_${nameParts.join('.')}.png`;
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  }
+})();
+</script>
+
+</body>
+</html>
