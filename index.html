@@ -1,191 +1,227 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sensor Camera with Manual Controls</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            background: #111;
-            color: white;
-            text-align: center;
-            padding: 1em;
-        }
-        video {
-            width: 100%;
-            max-width: 600px;
-            border-radius: 10px;
-            margin-bottom: 1em;
-        }
-        .controls,
-        .sensor-data,
-        .camera-settings {
-            margin: 1em auto;
-            max-width: 600px;
-            background: #222;
-            padding: 1em;
-            border-radius: 10px;
-            text-align: left;
-        }
-        label {
-            display: block;
-            margin-top: 1em;
-        }
-        input[type='range'] {
-            width: 100%;
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sensor Camera with Resolution and BMP Save</title>
+<style>
+    body {
+        font-family: sans-serif;
+        background: #111;
+        color: white;
+        text-align: center;
+        padding: 1em;
+    }
+    video {
+        width: 100%;
+        max-width: 600px;
+        border-radius: 10px;
+        margin-bottom: 1em;
+    }
+    .controls, .sensor-data, .camera-settings {
+        margin: 1em auto;
+        max-width: 600px;
+        background: #222;
+        padding: 1em;
+        border-radius: 10px;
+        text-align: left;
+    }
+    label {
+        display: block;
+        margin-top: 1em;
+    }
+    select, button {
+        font-size: 1rem;
+        padding: 0.5em;
+        margin-top: 0.5em;
+        width: 100%;
+    }
+</style>
 </head>
 <body>
     <h1>📸 Sensor Camera</h1>
-    <video id="video" autoplay playsinline muted></video>
+
     <div class="controls">
-        <button onclick="capturePhoto()">Capture Photo</button>
+        <label for="resolutionSelect">Choose Resolution:</label>
+        <select id="resolutionSelect">
+            <option value="640x480">640 x 480</option>
+            <option value="1280x720" selected>1280 x 720</option>
+            <option value="1920x1080">1920 x 1080</option>
+            <option value="2560x1440">2560 x 1440</option>
+        </select>
+        <button id="startCameraBtn">Start Camera</button>
+        <button onclick="capturePhoto()" style="margin-top: 1em;">Capture Photo (BMP)</button>
     </div>
-    <div class="camera-settings" id="cameraControls">
-        <h3>🎛️ Camera Settings</h3>
-        <!-- Controls will be added here -->
-    </div>
+
+    <video id="video" autoplay playsinline muted></video>
+
     <div class="sensor-data" id="sensorData">
         <strong>Sensor Data:</strong>
         <pre id="sensorOutput">Waiting for data...</pre>
     </div>
+
     <canvas id="canvas" style="display:none;"></canvas>
 
-    <script>
-        let videoStream;
-        let currentSensor = {
-            orientation: {},
-            position: {}
-        };
+<script>
+    let videoStream;
+    let currentSensor = { orientation: {}, position: {} };
 
-        async function initCamera() {
+    async function startCamera() {
+        const select = document.getElementById("resolutionSelect");
+        const [width, height] = select.value.split('x').map(Number);
+
+        if (videoStream) {
+            // Stop existing stream tracks before starting new
+            videoStream.getTracks().forEach(t => t.stop());
+        }
+
+        try {
+            videoStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { exact: width },
+                    height: { exact: height },
+                    facingMode: "environment"
+                }
+            });
+            const video = document.getElementById("video");
+            video.srcObject = videoStream;
+            await video.play();
+        } catch (err) {
+            alert("Camera error: " + err.message + "\nTrying without exact constraints.");
+            // Retry without exact constraints if failed (some devices don’t support exact)
             try {
                 videoStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" }
+                    video: {
+                        width: { ideal: width },
+                        height: { ideal: height },
+                        facingMode: "environment"
+                    }
                 });
                 const video = document.getElementById("video");
                 video.srcObject = videoStream;
                 await video.play();
-                initCameraControls();
-            } catch (err) {
-                alert("Camera error: " + err.message);
+            } catch (err2) {
+                alert("Camera error: " + err2.message);
             }
         }
+    }
 
-        function initCameraControls() {
-            const track = videoStream.getVideoTracks()[0];
-            const capabilities = track.getCapabilities();
-            const cameraControls = document.getElementById("cameraControls");
+    // BMP encoding helper function
+    // Reference: https://stackoverflow.com/questions/36522565/how-to-save-a-canvas-image-as-bmp
+    function encodeBMP(ctx, width, height) {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const pixels = imageData.data;
+        const rowSize = Math.floor((24 * width + 31) / 32) * 4;
+        const pixelDataSize = rowSize * height;
+        const fileSize = 54 + pixelDataSize;
 
-            console.log("Camera Capabilities:", capabilities);
+        const buffer = new ArrayBuffer(fileSize);
+        const dv = new DataView(buffer);
 
-            function addSlider(name, key) {
-                if (!capabilities[key]) return;
+        // BITMAPFILEHEADER
+        dv.setUint16(0, 0x4D42, true); // 'BM'
+        dv.setUint32(2, fileSize, true);
+        dv.setUint32(6, 0, true);
+        dv.setUint32(10, 54, true);
 
-                const container = document.createElement("div");
-                const label = document.createElement("label");
-                label.textContent = `${name}: `;
+        // BITMAPINFOHEADER
+        dv.setUint32(14, 40, true); // header size
+        dv.setInt32(18, width, true);
+        dv.setInt32(22, height, true);
+        dv.setUint16(26, 1, true); // planes
+        dv.setUint16(28, 24, true); // bits per pixel
+        dv.setUint32(30, 0, true); // compression = none
+        dv.setUint32(34, pixelDataSize, true);
+        dv.setInt32(38, 0, true); // pixels per meter X
+        dv.setInt32(42, 0, true); // pixels per meter Y
+        dv.setUint32(46, 0, true); // colors used
+        dv.setUint32(50, 0, true); // important colors
 
-                const valueSpan = document.createElement("span");
-                valueSpan.id = key + "Value";
-                valueSpan.textContent = capabilities[key].min;
+        // Pixel data (bottom-up)
+        let pos = 54;
+        const padding = rowSize - width * 3;
 
-                const input = document.createElement("input");
-                input.type = "range";
-                input.min = capabilities[key].min;
-                input.max = capabilities[key].max;
-                input.step = capabilities[key].step || 1;
-                input.value = input.min;
-                input.oninput = async () => {
-                    valueSpan.textContent = input.value;
-                    try {
-                        await track.applyConstraints({
-                            advanced: [{ [key]: parseFloat(input.value) }]
-                        });
-                    } catch (e) {
-                        console.warn(`Failed to set ${key}`, e);
-                    }
-                };
-
-                label.appendChild(valueSpan);
-                container.appendChild(label);
-                container.appendChild(input);
-                cameraControls.appendChild(container);
+        for (let y = height - 1; y >= 0; y--) {
+            for (let x = 0; x < width; x++) {
+                const i = (y * width + x) * 4;
+                dv.setUint8(pos++, pixels[i + 2]); // Blue
+                dv.setUint8(pos++, pixels[i + 1]); // Green
+                dv.setUint8(pos++, pixels[i]);     // Red
             }
+            pos += padding;
+        }
+        return new Blob([buffer], { type: "image/bmp" });
+    }
 
-            addSlider("Zoom", "zoom");
-            addSlider("Focus Distance", "focusDistance");
-            addSlider("Exposure Compensation", "exposureCompensation");
-            addSlider("White Balance", "whiteBalance");
+    function capturePhoto() {
+        const canvas = document.getElementById("canvas");
+        const video = document.getElementById("video");
+
+        // Set canvas size to video size
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0);
+
+        // Format sensor values for filename
+        function fmtNum(n) {
+            if (n === undefined || n === null || isNaN(n)) return "NA";
+            return n.toFixed(2).replace(/\./g, "_");
         }
 
-        function capturePhoto() {
-            const canvas = document.getElementById("canvas");
-            const video = document.getElementById("video");
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(video, 0, 0);
+        const o = currentSensor.orientation;
+        const p = currentSensor.position;
 
-            // Helper to format numbers safely for filename
-            function fmtNum(n) {
-                if (n === undefined || n === null || isNaN(n)) return "NA";
-                return n.toFixed(2).replace(/\./g, "_");
-            }
+        const sensorString =
+            `A${fmtNum(o.alpha)}_B${fmtNum(o.beta)}_G${fmtNum(o.gamma)}_` +
+            `Lat${fmtNum(p.latitude)}_Lon${fmtNum(p.longitude)}_Acc${fmtNum(p.accuracy)}`;
 
-            const o = currentSensor.orientation;
-            const p = currentSensor.position;
+        const timestamp = Date.now();
 
-            const sensorString =
-                `A${fmtNum(o.alpha)}_B${fmtNum(o.beta)}_G${fmtNum(o.gamma)}_` +
-                `Lat${fmtNum(p.latitude)}_Lon${fmtNum(p.longitude)}_Acc${fmtNum(p.accuracy)}`;
+        const filename = `photo_${sensorString}_${timestamp}.bmp`;
 
-            const timestamp = Date.now();
+        // Encode BMP and save
+        const bmpBlob = encodeBMP(ctx, canvas.width, canvas.height);
 
-            const filename = `photo_${sensorString}_${timestamp}.jpg`;
+        const url = URL.createObjectURL(bmpBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
 
-            canvas.toBlob((blob) => {
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = filename;
-                a.click();
-                URL.revokeObjectURL(url);
-            }, "image/jpeg");
-        }
+    function updateSensorOutput() {
+        const out = document.getElementById("sensorOutput");
+        out.textContent = JSON.stringify(currentSensor, null, 2);
+    }
 
-        function updateSensorOutput() {
-            const out = document.getElementById("sensorOutput");
-            out.textContent = JSON.stringify(currentSensor, null, 2);
-        }
+    window.addEventListener("deviceorientation", e => {
+        currentSensor.orientation = {
+            alpha: e.alpha,
+            beta: e.beta,
+            gamma: e.gamma
+        };
+        updateSensorOutput();
+    });
 
-        window.addEventListener("deviceorientation", (e) => {
-            currentSensor.orientation = {
-                alpha: e.alpha,
-                beta: e.beta,
-                gamma: e.gamma
+    navigator.geolocation.watchPosition(
+        pos => {
+            currentSensor.position = {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                accuracy: pos.coords.accuracy
             };
             updateSensorOutput();
-        });
+        },
+        err => {
+            console.warn("GPS error", err);
+        },
+        { enableHighAccuracy: true }
+    );
 
-        navigator.geolocation.watchPosition(
-            (pos) => {
-                currentSensor.position = {
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude,
-                    accuracy: pos.coords.accuracy
-                };
-                updateSensorOutput();
-            },
-            (err) => {
-                console.warn("GPS error", err);
-            },
-            { enableHighAccuracy: true }
-        );
-
-        initCamera();
-    </script>
+    document.getElementById("startCameraBtn").addEventListener("click", startCamera);
+</script>
 </body>
 </html>
