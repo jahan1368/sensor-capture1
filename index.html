@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Full Sensor Demo (Web)</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sensor Camera with Filename Capture</title>
 <style>
   body {
-    font-family: monospace, monospace;
+    font-family: monospace;
     background: #111;
     color: #eee;
     padding: 1em;
@@ -15,7 +15,6 @@
   }
   video {
     width: 100%;
-    max-width: 600px;
     border-radius: 8px;
     margin-bottom: 1em;
     background: black;
@@ -27,72 +26,75 @@
     max-height: 300px;
     overflow-y: auto;
   }
+  button {
+    font-size: 1rem;
+    padding: 0.5em 1em;
+    margin: 1em 0;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
 
-<h1>📡 Full Sensor Demo</h1>
-
+<h1>📸 Sensor Capture</h1>
 <video id="video" autoplay playsinline muted></video>
-
+<button onclick="capturePhoto()">📷 Capture Photo</button>
 <h2>Sensor Data</h2>
-
 <pre id="sensorData">Waiting for sensor data...</pre>
+<canvas id="canvas" style="display:none;"></canvas>
 
 <script>
 (async () => {
-  const sensorDataEl = document.getElementById("sensorData");
   const videoEl = document.getElementById("video");
-
-  // Show camera video
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    videoEl.srcObject = stream;
-  } catch(e) {
-    sensorDataEl.textContent = "Camera error: " + e.message;
-  }
-
-  // State to hold sensor values
+  const sensorDataEl = document.getElementById("sensorData");
+  const canvas = document.getElementById("canvas");
   const data = {
     deviceOrientation: {},
     deviceMotion: {},
     geolocation: {},
-    ambientLight: "N/A",
-    magnetometer: "N/A",
-    gyroscope: "N/A",
-    accelerometer: "N/A"
+    ambientLight: null,
+    magnetometer: null,
+    gyroscope: null,
+    accelerometer: null
   };
 
-  // Update display
+  const fmt = v => (v == null || isNaN(v)) ? "NA" : parseFloat(v).toFixed(8);
+
   function updateDisplay() {
     sensorDataEl.textContent = JSON.stringify(data, null, 2);
   }
 
-  // DeviceOrientationEvent
+  // Start video
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    videoEl.srcObject = stream;
+  } catch (e) {
+    sensorDataEl.textContent = "Camera error: " + e.message;
+  }
+
+  // Orientation
   window.addEventListener("deviceorientation", e => {
     data.deviceOrientation = {
-      alpha: e.alpha?.toFixed(4),
-      beta: e.beta?.toFixed(4),
-      gamma: e.gamma?.toFixed(4),
+      alpha: fmt(e.alpha),
+      beta: fmt(e.beta),
+      gamma: fmt(e.gamma),
       absolute: e.absolute
     };
     updateDisplay();
   });
 
-  // DeviceMotionEvent
+  // Motion
   window.addEventListener("devicemotion", e => {
-    const acc = e.acceleration;
-    const rot = e.rotationRate;
     data.deviceMotion = {
       acceleration: {
-        x: acc?.x?.toFixed(4),
-        y: acc?.y?.toFixed(4),
-        z: acc?.z?.toFixed(4)
+        x: fmt(e.acceleration?.x),
+        y: fmt(e.acceleration?.y),
+        z: fmt(e.acceleration?.z)
       },
       rotationRate: {
-        alpha: rot?.alpha?.toFixed(4),
-        beta: rot?.beta?.toFixed(4),
-        gamma: rot?.gamma?.toFixed(4)
+        alpha: fmt(e.rotationRate?.alpha),
+        beta: fmt(e.rotationRate?.beta),
+        gamma: fmt(e.rotationRate?.gamma)
       },
       interval: e.interval
     };
@@ -100,81 +102,91 @@
   });
 
   // Geolocation
-  if ("geolocation" in navigator) {
+  if (navigator.geolocation) {
     navigator.geolocation.watchPosition(pos => {
       data.geolocation = {
-        latitude: pos.coords.latitude.toFixed(8),
-        longitude: pos.coords.longitude.toFixed(8),
-        altitude: pos.coords.altitude?.toFixed(2) ?? null,
-        accuracy: pos.coords.accuracy.toFixed(2),
-        altitudeAccuracy: pos.coords.altitudeAccuracy?.toFixed(2) ?? null,
-        heading: pos.coords.heading?.toFixed(2) ?? null,
-        speed: pos.coords.speed?.toFixed(2) ?? null,
-        timestamp: pos.timestamp
+        latitude: fmt(pos.coords.latitude),
+        longitude: fmt(pos.coords.longitude),
+        accuracy: fmt(pos.coords.accuracy)
       };
       updateDisplay();
     }, err => {
       data.geolocation = { error: err.message };
       updateDisplay();
-    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
-  } else {
-    data.geolocation = "Geolocation not supported";
+    }, { enableHighAccuracy: true });
   }
 
-  // AmbientLightSensor (experimental)
+  // Ambient Light Sensor
   if ('AmbientLightSensor' in window) {
     try {
-      const als = new AmbientLightSensor();
-      als.addEventListener('reading', () => {
-        data.ambientLight = als.illuminance.toFixed(2) + " lux";
+      const sensor = new AmbientLightSensor();
+      sensor.onreading = () => {
+        data.ambientLight = fmt(sensor.illuminance);
         updateDisplay();
-      });
-      als.addEventListener('error', event => {
-        data.ambientLight = "Error: " + event.error.name;
+      };
+      sensor.onerror = e => {
+        data.ambientLight = "Error: " + e.error.name;
         updateDisplay();
-      });
-      als.start();
+      };
+      sensor.start();
     } catch (e) {
-      data.ambientLight = "AmbientLightSensor start failed: " + e.message;
+      data.ambientLight = "Sensor init failed";
     }
-  } else {
-    data.ambientLight = "AmbientLightSensor not supported";
   }
 
-  // Helper to start generic sensors safely
-  async function startSensor(SensorClass, label) {
+  // Generic sensor starter
+  async function startSensor(SensorClass, key) {
     if (!(SensorClass in window)) {
-      data[label] = label + " not supported";
-      updateDisplay();
+      data[key] = key + " not supported";
       return;
     }
     try {
       const sensor = new window[SensorClass]({ frequency: 10 });
       sensor.addEventListener('reading', () => {
-        data[label] = {
-          x: sensor.x?.toFixed(4),
-          y: sensor.y?.toFixed(4),
-          z: sensor.z?.toFixed(4)
+        data[key] = {
+          x: fmt(sensor.x),
+          y: fmt(sensor.y),
+          z: fmt(sensor.z)
         };
         updateDisplay();
       });
-      sensor.addEventListener('error', event => {
-        data[label] = `Error: ${event.error.name}`;
-        updateDisplay();
-      });
       sensor.start();
-    } catch(e) {
-      data[label] = `Start failed: ${e.message}`;
-      updateDisplay();
+    } catch (e) {
+      data[key] = "Start failed: " + e.message;
     }
   }
 
-  // Start Magnetometer, Gyroscope, Accelerometer
   await startSensor('Magnetometer', 'magnetometer');
   await startSensor('Gyroscope', 'gyroscope');
   await startSensor('Accelerometer', 'accelerometer');
 
-  updateDisplay();
+  window.capturePhoto = function () {
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(videoEl, 0, 0);
+
+    const d = data;
+    const nameParts = [
+      fmt(d.geolocation.latitude),
+      fmt(d.geolocation.longitude),
+      fmt(d.deviceOrientation.alpha),
+      fmt(d.deviceOrientation.beta),
+      fmt(d.deviceOrientation.gamma),
+      fmt(d.ambientLight),
+      Date.now()
+    ];
+
+    const filename = `photo_${nameParts.join('.')}.png`;
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  }
 })();
 </script>
 
