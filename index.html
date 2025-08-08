@@ -113,6 +113,14 @@
   <button onclick="startCamera()">🎥 Start Camera</button>
   <button onclick="capturePhoto()">📷 Capture Photo</button>
 </div>
+  <div class="button-group">
+  <label>
+    Delay (seconds):
+    <input type="number" id="captureDelay" value="0.1" step="0.1" min="0">
+  </label>
+  <button id="startTimedCapture">▶ Start Timed Capture</button>
+  <button id="stopTimedCapture">⏹ Finish</button>
+</div>
 
 <video id="video" autoplay playsinline muted></video>
 
@@ -221,6 +229,30 @@
   let availableCameras = [];
   let currentCameraIndex = 0;
   let permissionsGranted = false;
+  et timedCaptureTimer = null;
+
+document.getElementById("startTimedCapture").addEventListener("click", () => {
+  const delay = parseFloat(document.getElementById("captureDelay").value) * 1000;
+  if (isNaN(delay) || delay <= 0) {
+    alert("Please enter a valid delay time in seconds.");
+    return;
+  }
+  if (timedCaptureTimer) {
+    clearTimeout(timedCaptureTimer);
+  }
+  timedCaptureTimer = setTimeout(() => {
+    window.capturePhoto();
+    timedCaptureTimer = null;
+  }, delay);
+});
+
+document.getElementById("stopTimedCapture").addEventListener("click", () => {
+  if (timedCaptureTimer) {
+    clearTimeout(timedCaptureTimer);
+    timedCaptureTimer = null;
+    console.log("⏹ Timed capture cancelled.");
+  }
+});
   
   const data = {
     deviceOrientation: {},
