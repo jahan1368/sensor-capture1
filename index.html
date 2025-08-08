@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Camera with Timed Capture</title>
+  <meta charset="UTF-8" />
+  <title>Camera with Timed Capture and Permissions</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -33,11 +33,18 @@
       width: 60px;
       text-align: right;
     }
+    #permissionStatus {
+      margin-bottom: 10px;
+      font-weight: bold;
+      color: #222;
+    }
   </style>
 </head>
 <body>
 
-  <h1>Camera Capture</h1>
+  <h1>Camera Capture with Permissions</h1>
+  <div id="permissionStatus">Requesting permissions...</div>
+
   <video id="video" autoplay playsinline width="640" height="480"></video>
   <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
 
@@ -48,75 +55,98 @@
   <div class="button-group">
     <label>
       Delay (seconds):
-      <input type="number" id="captureDelay" value="0.1" step="0.1" min="0">
+      <input type="number" id="captureDelay" value="0.1" step="0.1" min="0" />
     </label>
     <button id="startTimedCapture">▶ Start Timed Capture</button>
     <button id="stopTimedCapture">⏹ Finish</button>
   </div>
 
-  <script>
-    // === Your existing camera setup ===
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const context = canvas.getContext('2d');
+<script>
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const context = canvas.getContext('2d');
+  const permissionStatusEl = document.getElementById('permissionStatus');
 
-    async function initCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-      } catch (err) {
-        console.error('Error accessing camera:', err);
-      }
+  let stream = null;
+  let timedCaptureTimer = null;
+
+  async function requestPermissions() {
+    try {
+      permissionStatusEl.textContent = "Requesting camera and microphone permissions...";
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      video.srcObject = stream;
+      permissionStatusEl.textContent = "Camera and microphone permissions granted.";
+
+      // Request geolocation permission explicitly:
+      permissionStatusEl.textContent = "Requesting geolocation permission...";
+      await new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          permissionStatusEl.textContent = "Geolocation not supported.";
+          resolve();
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            permissionStatusEl.textContent = "All permissions granted.";
+            resolve(pos);
+          },
+          (err) => {
+            permissionStatusEl.textContent = "Geolocation permission denied or error.";
+            resolve();
+          }
+        );
+      });
+
+    } catch (err) {
+      permissionStatusEl.textContent = "Permission denied or error: " + err.message;
+      alert("Please allow camera, microphone, and location permissions to use this app.");
+      console.error("Permission error:", err);
     }
+  }
 
-    // Function to capture a photo and save it
-    function capturePhoto() {
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = canvas.toDataURL('image/png');
-
-      // Create a link to download the image
-      const link = document.createElement('a');
-      link.href = imageData;
-      link.download = `photo_${Date.now()}.png`;
-      link.click();
-
-      console.log('📸 Photo captured and saved.');
+  function capturePhoto() {
+    if (!stream) {
+      alert("Camera not started or permissions not granted.");
+      return;
     }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = imageData;
+    link.download = `photo_${Date.now()}.png`;
+    link.click();
+    console.log('📸 Photo captured and saved.');
+  }
 
-    window.capturePhoto = capturePhoto; // Make available for timed capture
+  window.capturePhoto = capturePhoto;
 
-    document.getElementById('captureBtn').addEventListener('click', capturePhoto);
+  document.getElementById('captureBtn').addEventListener('click', capturePhoto);
 
-    // Initialize camera
-    initCamera();
+  document.getElementById("startTimedCapture").addEventListener("click", () => {
+    const delay = parseFloat(document.getElementById("captureDelay").value) * 1000;
+    if (isNaN(delay) || delay <= 0) {
+      alert("Please enter a valid delay time in seconds.");
+      return;
+    }
+    if (timedCaptureTimer) clearTimeout(timedCaptureTimer);
+    timedCaptureTimer = setTimeout(() => {
+      window.capturePhoto();
+      timedCaptureTimer = null;
+    }, delay);
+    console.log(`▶ Timed capture started: will take photo in ${delay / 1000} seconds.`);
+  });
 
-    // === Timed capture functionality ===
-    let timedCaptureTimer = null;
+  document.getElementById("stopTimedCapture").addEventListener("click", () => {
+    if (timedCaptureTimer) {
+      clearTimeout(timedCaptureTimer);
+      timedCaptureTimer = null;
+      console.log("⏹ Timed capture cancelled.");
+    }
+  });
 
-    document.getElementById("startTimedCapture").addEventListener("click", () => {
-      const delay = parseFloat(document.getElementById("captureDelay").value) * 1000;
-      if (isNaN(delay) || delay <= 0) {
-        alert("Please enter a valid delay time in seconds.");
-        return;
-      }
-      if (timedCaptureTimer) {
-        clearTimeout(timedCaptureTimer);
-      }
-      timedCaptureTimer = setTimeout(() => {
-        window.capturePhoto();
-        timedCaptureTimer = null;
-      }, delay);
-      console.log(`▶ Timed capture started: will take photo in ${delay / 1000} seconds.`);
-    });
-
-    document.getElementById("stopTimedCapture").addEventListener("click", () => {
-      if (timedCaptureTimer) {
-        clearTimeout(timedCaptureTimer);
-        timedCaptureTimer = null;
-        console.log("⏹ Timed capture cancelled.");
-      }
-    });
-  </script>
+  // Start permissions and camera on page load
+  requestPermissions();
+</script>
 
 </body>
 </html>
