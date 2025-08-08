@@ -76,9 +76,10 @@
     const capabilitiesEl = document.getElementById('capabilities');
     const sensorDataEl = document.getElementById('sensorData');
 
+    // UPDATED: Better camera enumeration with label detection
     async function enumerateCameras() {
       try {
-        // Ask for permission first so labels are available
+        // Ask permission first so labels are populated
         await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       } catch (err) {
         console.error("Permission error:", err);
@@ -96,6 +97,12 @@
           option.text = `Front Camera ${index + 1}`;
         } else if (label.includes("back") || label.includes("rear") || label.includes("environment")) {
           option.text = `Back Camera ${index + 1}`;
+        } else if (label.includes("wide")) {
+          option.text = `Wide Camera ${index + 1}`;
+        } else if (label.includes("tele")) {
+          option.text = `Telephoto Camera ${index + 1}`;
+        } else if (label.includes("macro")) {
+          option.text = `Macro Camera ${index + 1}`;
         } else {
           option.text = device.label || `Camera ${index + 1}`;
         }
@@ -161,7 +168,7 @@
 
           slider.oninput = () => {
             const constraints = {};
-            constraints[prop] = slider.value;
+            constraints[prop] = parseFloat(slider.value);
             currentTrack.applyConstraints({ advanced: [constraints] });
           };
 
@@ -171,7 +178,28 @@
       }
     }
 
-    // Init on page load
+    // SENSOR: Device orientation and motion
+    if (window.DeviceOrientationEvent) {
+      window.addEventListener('deviceorientation', event => {
+        sensorDataEl.textContent = `Alpha: ${event.alpha?.toFixed(2)}°
+Beta: ${event.beta?.toFixed(2)}°
+Gamma: ${event.gamma?.toFixed(2)}°`;
+      });
+    } else {
+      sensorDataEl.textContent += "\nDeviceOrientationEvent not supported.";
+    }
+
+    if (window.DeviceMotionEvent) {
+      window.addEventListener('devicemotion', event => {
+        sensorDataEl.textContent += `\nAccel X: ${event.acceleration.x?.toFixed(2)}
+Accel Y: ${event.acceleration.y?.toFixed(2)}
+Accel Z: ${event.acceleration.z?.toFixed(2)}`;
+      });
+    } else {
+      sensorDataEl.textContent += "\nDeviceMotionEvent not supported.";
+    }
+
+    // Init on load
     enumerateCameras();
   </script>
 
