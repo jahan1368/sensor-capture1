@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>Enhanced Sensor Camera with Full Controls</title>
 <style>
   body {
@@ -12,6 +12,8 @@
     padding: 1em;
     max-width: 800px;
     margin: auto;
+    -webkit-user-select: none;
+    user-select: none;
   }
   .video-container {
     position: relative;
@@ -57,20 +59,29 @@
     border-radius: 8px;
     max-height: 300px;
     overflow-y: auto;
+    font-size: 0.8em;
   }
   button, select, input {
     font-size: 1rem;
-    padding: 0.5em;
+    padding: 0.7em;
     margin: 0.3em 0;
     cursor: pointer;
     background: #333;
     color: #eee;
     border: 1px solid #555;
     border-radius: 4px;
+    min-height: 44px; /* Better touch targets for mobile */
   }
   button.active {
     background: #4CAF50;
     color: white;
+  }
+  .big-permission-btn {
+    font-size: 1.2em;
+    padding: 1em 2em;
+    background: #FF6B6B;
+    color: white;
+    font-weight: bold;
   }
   .controls-grid {
     display: grid;
@@ -97,6 +108,7 @@
   .slider-container input[type="range"] {
     width: 100%;
     margin: 0;
+    min-height: 44px;
   }
   .value-display {
     color: #FFA500;
@@ -131,7 +143,7 @@
     padding: 1em;
     border-radius: 8px;
     margin: 1em 0;
-    font-size: 0.9em;
+    font-size: 0.8em;
   }
   .error {
     color: #ff6b6b;
@@ -147,10 +159,25 @@
     border-radius: 4px;
     margin: 0.5em 0;
   }
+  .warning {
+    color: #ffd43b;
+    background: #2b2416;
+    padding: 0.5em;
+    border-radius: 4px;
+    margin: 0.5em 0;
+  }
   .touch-instructions {
     background: #1a1a2e;
     color: #87ceeb;
     padding: 0.8em;
+    border-radius: 8px;
+    margin: 1em 0;
+    font-size: 0.9em;
+  }
+  .permission-help {
+    background: #2d1a1a;
+    color: #ffb3b3;
+    padding: 1em;
     border-radius: 8px;
     margin: 1em 0;
     font-size: 0.9em;
@@ -161,11 +188,22 @@
 
 <h1>📸 Enhanced Sensor Camera</h1>
 
-<div id="permissionStatus" class="status">Click "Request Permissions" to start</div>
+<div id="permissionStatus" class="warning">🔐 Camera access required - Click button below</div>
+
+<div id="permissionHelp" class="permission-help">
+  <strong>📱 For Android users:</strong><br>
+  1. Click "Allow Camera Access" below<br>
+  2. When browser asks, tap "Allow" or "Grant"<br>
+  3. If blocked, check browser settings > Site permissions > Camera<br>
+  4. Make sure you're using Chrome, Firefox, or Samsung Internet
+</div>
+
+<div style="text-align: center; margin: 2em 0;">
+  <button class="big-permission-btn" onclick="requestAllPermissions()">🔐 Allow Camera Access</button>
+</div>
 
 <div class="button-group">
-  <button onclick="requestPermissions()">🔐 Request Permissions</button>
-  <select id="cameraSelect"><option>First request permissions</option></select>
+  <select id="cameraSelect" disabled><option>Grant permissions first</option></select>
   <select id="resolutionSelect">
     <option value="640x480">640x480</option>
     <option value="1280x720">1280x720 (HD)</option>
@@ -173,12 +211,12 @@
     <option value="2560x1440">2560x1440 (QHD)</option>
     <option value="3840x2160">3840x2160 (4K)</option>
   </select>
-  <button onclick="startCamera()">🎥 Start Camera</button>
-  <button onclick="capturePhoto()">📷 Capture Photo</button>
+  <button onclick="startCamera()" disabled id="startBtn">🎥 Start Camera</button>
+  <button onclick="capturePhoto()" disabled id="captureBtn">📷 Capture Photo</button>
 </div>
 
-<div class="touch-instructions">
-  🎯 <strong>Touch Controls:</strong> Single tap to focus • Double tap for white balance • Touch and hold for manual focus lock
+<div class="touch-instructions" style="display: none;" id="touchInstructions">
+  🎯 <strong>Touch Controls:</strong> Single tap to focus • Double tap for white balance • Long press for manual focus lock
 </div>
 
 <div class="video-container">
@@ -190,7 +228,7 @@
 <div class="interval-controls">
   <h3>⏱️ Interval Capture</h3>
   <div class="button-group">
-    <button id="intervalToggle" onclick="toggleIntervalCapture()">▶️ Start Interval</button>
+    <button id="intervalToggle" onclick="toggleIntervalCapture()" disabled>▶️ Start Interval</button>
     <label>Interval (seconds): <input id="intervalInput" type="number" class="interval-input" min="0.1" step="0.1" value="0.1"></label>
     <span class="capture-counter">Photos: <span id="captureCount">0</span></span>
   </div>
@@ -277,7 +315,7 @@
 
 <div id="cameraInfo">
   <h3>📊 Camera Capabilities</h3>
-  <pre id="capabilitiesDisplay">No camera active</pre>
+  <pre id="capabilitiesDisplay">Grant camera permissions to see capabilities</pre>
 </div>
 
 <div id="errorDisplay"></div>
@@ -302,6 +340,10 @@
   const intervalToggle = document.getElementById("intervalToggle");
   const intervalInput = document.getElementById("intervalInput");
   const captureCountEl = document.getElementById("captureCount");
+  const startBtn = document.getElementById("startBtn");
+  const captureBtn = document.getElementById("captureBtn");
+  const touchInstructions = document.getElementById("touchInstructions");
+  const permissionHelp = document.getElementById("permissionHelp");
   
   let currentStream = null;
   let currentTrack = null;
@@ -337,8 +379,9 @@
     errorDisplay.innerHTML = '';
   }
 
-  function updateStatus(message) {
+  function updateStatus(message, isError = false) {
     permissionStatus.textContent = message;
+    permissionStatus.className = isError ? 'error' : 'status';
   }
 
   function updateDisplay() {
@@ -352,6 +395,15 @@
     }
   }
 
+  function enableUI() {
+    cameraSelect.disabled = false;
+    startBtn.disabled = false;
+    captureBtn.disabled = false;
+    intervalToggle.disabled = false;
+    touchInstructions.style.display = 'block';
+    permissionHelp.style.display = 'none';
+  }
+
   // Touch controls for video element
   function setupTouchControls() {
     videoEl.addEventListener('touchstart', handleTouch, { passive: false });
@@ -359,7 +411,7 @@
     
     // Prevent default touch behaviors
     videoEl.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-    videoEl.addEventListener('touchend', e => e.preventDefault(), { passive: false });
+    videoEl.addEventListener('touchend', handleTouchEnd, { passive: false });
   }
 
   function handleTouch(e) {
@@ -379,17 +431,13 @@
       }, 500);
     }
     
-    if (e.type === 'touchend' || e.type === 'click') {
-      if (touchTimeout) {
-        clearTimeout(touchTimeout);
-        touchTimeout = null;
-      }
-      
+    if (e.type === 'click' && !e.touches) {
+      // Handle mouse click
       if (isDoubleTouch) {
         handleDoubleTouch(x, y);
       } else {
         setTimeout(() => {
-          if (Date.now() - now > 250) return; // Prevent single tap if double tap occurred
+          if (Date.now() - now > 250) return;
           handleSingleTouch(x, y);
         }, 250);
       }
@@ -398,20 +446,42 @@
     lastTouchTime = now;
   }
 
+  function handleTouchEnd(e) {
+    e.preventDefault();
+    
+    if (touchTimeout) {
+      clearTimeout(touchTimeout);
+      touchTimeout = null;
+    }
+    
+    const rect = videoEl.getBoundingClientRect();
+    const x = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX) - rect.left;
+    const y = (e.changedTouches ? e.changedTouches[0].clientY : e.clientY) - rect.top;
+    
+    const now = Date.now();
+    const isDoubleTouch = (now - lastTouchTime) < 300 && lastTouchTime > 0;
+    
+    if (isDoubleTouch) {
+      handleDoubleTouch(x, y);
+    } else {
+      setTimeout(() => {
+        if (Date.now() - now > 250) return;
+        handleSingleTouch(x, y);
+      }, 250);
+    }
+  }
+
   function handleSingleTouch(x, y) {
-    // Focus at touch point
     showFocusIndicator(x, y);
     setFocusPoint(x, y);
   }
 
   function handleDoubleTouch(x, y) {
-    // White balance at touch point
     showWBIndicator(x, y);
     setWhiteBalancePoint(x, y);
   }
 
   function handleLongPress(x, y) {
-    // Manual focus lock
     showFocusIndicator(x, y);
     setFocusPoint(x, y);
     setFocusMode('manual');
@@ -444,7 +514,6 @@
     const normalizedX = x / rect.width;
     const normalizedY = y / rect.height;
     
-    // Simple distance-based focus (closer to center = closer focus)
     const centerDistance = Math.sqrt(
       Math.pow(normalizedX - 0.5, 2) + Math.pow(normalizedY - 0.5, 2)
     );
@@ -455,7 +524,6 @@
     
     applyConstraint({ focusMode: 'manual', focusDistance: focusDistance });
     
-    // Update UI slider
     const focusSlider = document.getElementById('focusDistanceSlider');
     focusSlider.value = focusValue * 100;
     updateSliderValue('focusDistanceSlider', 'focusDistanceValue', Math.round(focusValue * 100) + '%');
@@ -467,16 +535,125 @@
     const rect = videoEl.getBoundingClientRect();
     const normalizedX = x / rect.width;
     
-    // Map X position to color temperature (left = warm, right = cool)
     const tempRange = capabilities.colorTemperature.max - capabilities.colorTemperature.min;
     const colorTemp = capabilities.colorTemperature.min + (tempRange * normalizedX);
     
     applyConstraint({ whiteBalanceMode: 'manual', colorTemperature: colorTemp });
     
-    // Update UI slider
     const wbSlider = document.getElementById('whiteBalanceSlider');
     wbSlider.value = colorTemp;
     updateSliderValue('whiteBalanceSlider', 'whiteBalanceValue', Math.round(colorTemp) + 'K');
+  }
+
+  // Enhanced permission request that works better on Android
+  window.requestAllPermissions = async () => {
+    try {
+      updateStatus("🔄 Requesting camera access...");
+      clearError();
+      
+      // Try different constraint approaches for better Android compatibility
+      const constraintOptions = [
+        // Try back camera first (most common use case)
+        { video: { facingMode: { exact: 'environment' } } },
+        // Fallback to any camera
+        { video: { facingMode: 'environment' } },
+        // Basic video request
+        { video: true },
+        // Try with specific resolution
+        { video: { width: 1280, height: 720, facingMode: 'environment' } }
+      ];
+
+      let stream = null;
+      let lastError = null;
+
+      for (const constraints of constraintOptions) {
+        try {
+          console.log('Trying constraints:', constraints);
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          break; // Success!
+        } catch (error) {
+          lastError = error;
+          console.warn('Constraint failed:', constraints, error.message);
+          continue;
+        }
+      }
+
+      if (!stream) {
+        throw lastError || new Error('All constraint attempts failed');
+      }
+
+      // Stop the stream immediately after getting permission
+      stream.getTracks().forEach(track => track.stop());
+      
+      permissionsGranted = true;
+      updateStatus("✅ Camera access granted! Finding cameras...");
+      
+      // Small delay to ensure permissions are fully processed
+      setTimeout(async () => {
+        await enumerateCameras();
+        enableUI();
+      }, 500);
+      
+    } catch (error) {
+      console.error('Permission error:', error);
+      let errorMessage = "Camera access denied. ";
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage += "Please click 'Allow' when prompted, or check browser settings.";
+      } else if (error.name === 'NotFoundError') {
+        errorMessage += "No camera found on device.";
+      } else if (error.name === 'NotSupportedError') {
+        errorMessage += "Camera not supported in this browser.";
+      } else {
+        errorMessage += error.message;
+      }
+      
+      updateStatus("❌ " + errorMessage, true);
+      showError(errorMessage + " Try refreshing the page.");
+    }
+  };
+
+  async function enumerateCameras() {
+    try {
+      // Request permission again to ensure we get device labels
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      
+      if (videoDevices.length === 0) {
+        throw new Error("No cameras found on this device");
+      }
+      
+      availableCameras = videoDevices;
+      cameraSelect.innerHTML = '';
+      
+      videoDevices.forEach((device, index) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        
+        let label = device.label || `Camera ${index + 1}`;
+        
+        // Better mobile camera identification
+        if (label.toLowerCase().includes('front') || label.toLowerCase().includes('user')) {
+          label += " 🤳 (Front)";
+        } else if (label.toLowerCase().includes('back') || label.toLowerCase().includes('environment')) {
+          label += " 📷 (Back)";
+        } else if (index === 0) {
+          label += " 📷 (Main)";
+        } else if (index === 1) {
+          label += " 🤳 (Secondary)";
+        }
+        
+        option.text = label;
+        cameraSelect.appendChild(option);
+      });
+      
+      updateStatus(`✅ Found ${videoDevices.length} camera(s) - ready to start!`);
+      clearError();
+      
+    } catch (error) {
+      showError(`Failed to find cameras: ${error.message}`);
+      updateStatus("❌ Camera enumeration failed", true);
+    }
   }
 
   // Interval capture functionality
@@ -494,14 +671,14 @@
       return;
     }
 
-    const interval = parseFloat(intervalInput.value) * 1000; // Convert to milliseconds
+    const interval = parseFloat(intervalInput.value) * 1000;
     if (interval < 100) {
       showError("Minimum interval is 0.1 seconds");
       return;
     }
 
     intervalCapture = setInterval(() => {
-      capturePhoto(true); // true indicates interval capture
+      capturePhoto(true);
     }, interval);
 
     intervalToggle.textContent = "⏹️ Stop Interval";
@@ -545,73 +722,6 @@
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  window.requestPermissions = async () => {
-    try {
-      updateStatus("Requesting camera permissions...");
-      clearError();
-      
-      // Request camera permission
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' }
-      });
-      
-      // Stop the stream immediately after getting permission
-      stream.getTracks().forEach(track => track.stop());
-      
-      permissionsGranted = true;
-      updateStatus("✅ Permissions granted! Enumerating cameras...");
-      
-      await enumerateCameras();
-      
-    } catch (error) {
-      showError(`Permission denied: ${error.message}. Please allow camera access and try again.`);
-      updateStatus("❌ Permission denied - click to try again");
-    }
-  };
-
-  async function enumerateCameras() {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      
-      if (videoDevices.length === 0) {
-        throw new Error("No cameras found on this device");
-      }
-      
-      availableCameras = videoDevices;
-      cameraSelect.innerHTML = '';
-      
-      videoDevices.forEach((device, index) => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        
-        // Better camera labeling for mobile devices
-        let label = device.label;
-        if (!label || label === '') {
-          if (index === 0) label = "Camera 1 (Main)";
-          else if (index === 1) label = "Camera 2 (Front/Secondary)";
-          else label = `Camera ${index + 1}`;
-        }
-        
-        // Try to identify front/back cameras
-        if (label.toLowerCase().includes('front') || label.toLowerCase().includes('user')) {
-          label += " 🤳";
-        } else if (label.toLowerCase().includes('back') || label.toLowerCase().includes('environment')) {
-          label += " 📷";
-        }
-        
-        option.text = label;
-        cameraSelect.appendChild(option);
-      });
-      
-      updateStatus(`✅ Found ${videoDevices.length} camera(s) - ready to start!`);
-      clearError();
-      
-    } catch (error) {
-      showError(`Failed to enumerate cameras: ${error.message}`);
-    }
-  }
 
   function setupSliderListeners() {
     // Focus Distance
@@ -672,130 +782,4 @@
       const value = parseFloat(e.target.value);
       updateSliderValue('whiteBalanceSlider', 'whiteBalanceValue', value + 'K');
       if (currentTrack && capabilities.colorTemperature) {
-        applyConstraint({ whiteBalanceMode: 'manual', colorTemperature: value });
-      }
-    });
-
-    // Image adjustments
-    ['saturation', 'contrast', 'brightness', 'sharpness'].forEach(setting => {
-      const slider = document.getElementById(setting + 'Slider');
-      slider.addEventListener('input', (e) => {
-        const value = parseFloat(e.target.value);
-        updateSliderValue(setting + 'Slider', setting + 'Value', value);
-        if (currentTrack && capabilities[setting]) {
-          const range = capabilities[setting];
-          const actualValue = range.min + (range.max - range.min) * value / 100;
-          applyConstraint({ [setting]: actualValue });
-        }
-      });
-    });
-  }
-
-  async function applyConstraint(constraint) {
-    if (!currentTrack) return;
-    try {
-      await currentTrack.applyConstraints({ advanced: [constraint] });
-    } catch (e) {
-      console.warn('Failed to apply constraint:', constraint, e.message);
-    }
-  }
-
-  function displayCapabilities() {
-    if (!capabilities || Object.keys(capabilities).length === 0) {
-      capabilitiesDisplay.textContent = "No camera capabilities available";
-      return;
-    }
-
-    const relevant = {};
-    ['zoom', 'focusDistance', 'focusMode', 'exposureMode', 'exposureTime', 'exposureCompensation', 
-     'iso', 'whiteBalanceMode', 'colorTemperature', 'brightness', 'contrast', 'saturation', 
-     'sharpness', 'torch'].forEach(key => {
-      if (capabilities[key]) relevant[key] = capabilities[key];
-    });
-
-    capabilitiesDisplay.textContent = JSON.stringify(relevant, null, 2);
-  }
-
-  function setupSliderRanges() {
-    // Update slider ranges based on capabilities
-    if (capabilities.zoom) {
-      const zoomSlider = document.getElementById('zoomSlider');
-      zoomSlider.min = capabilities.zoom.min;
-      zoomSlider.max = capabilities.zoom.max;
-      zoomSlider.step = (capabilities.zoom.max - capabilities.zoom.min) / 100;
-    }
-
-    if (capabilities.focusDistance) {
-      const focusSlider = document.getElementById('focusDistanceSlider');
-      focusSlider.min = 0;
-      focusSlider.max = 100;
-    }
-
-    if (capabilities.exposureTime) {
-      const expSlider = document.getElementById('exposureTimeSlider');
-      expSlider.min = Math.ceil(1 / capabilities.exposureTime.max);
-      expSlider.max = Math.ceil(1 / capabilities.exposureTime.min);
-    }
-
-    if (capabilities.colorTemperature) {
-      const wbSlider = document.getElementById('whiteBalanceSlider');
-      wbSlider.min = capabilities.colorTemperature.min;
-      wbSlider.max = capabilities.colorTemperature.max;
-    }
-  }
-
-  window.startCamera = async () => {
-    if (!permissionsGranted) {
-      showError("Please request permissions first");
-      return;
-    }
-
-    if (currentStream) {
-      currentStream.getTracks().forEach(track => track.stop());
-    }
-
-    const [width, height] = resolutionSelect.value.split('x').map(Number);
-    const deviceId = cameraSelect.value;
-    
-    if (!deviceId) {
-      showError("No camera selected");
-      return;
-    }
-
-    // Try multiple constraint configurations for better compatibility
-    const constraintConfigs = [
-      // Exact constraints
-      {
-        video: {
-          deviceId: { exact: deviceId },
-          width: { exact: width },
-          height: { exact: height }
-        }
-      },
-      // Ideal constraints (fallback)
-      {
-        video: {
-          deviceId: { exact: deviceId },
-          width: { ideal: width },
-          height: { ideal: height }
-        }
-      },
-      // Basic constraints (last resort)
-      {
-        video: {
-          deviceId: { exact: deviceId }
-        }
-      }
-    ];
-
-    for (const constraints of constraintConfigs) {
-      try {
-        updateStatus("Starting camera...");
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        videoEl.srcObject = stream;
-        currentStream = stream;
-        currentTrack = stream.getVideoTracks()[0];
-        capabilities = currentTrack.getCapabilities();
-        
-        display
+        applyConstraint({ whiteBalanceMode:
