@@ -161,11 +161,11 @@
 
 <h1>📸 Enhanced Sensor Camera</h1>
 
-<div id="permissionStatus" class="status">Checking permissions...</div>
+<div id="permissionStatus" class="status">Click "Request Permissions" to start</div>
 
 <div class="button-group">
   <button onclick="requestPermissions()">🔐 Request Permissions</button>
-  <select id="cameraSelect"><option>Loading cameras...</option></select>
+  <select id="cameraSelect"><option>First request permissions</option></select>
   <select id="resolutionSelect">
     <option value="640x480">640x480</option>
     <option value="1280x720">1280x720 (HD)</option>
@@ -354,12 +354,12 @@
 
   // Touch controls for video element
   function setupTouchControls() {
-    videoEl.addEventListener('touchstart', handleTouch);
+    videoEl.addEventListener('touchstart', handleTouch, { passive: false });
     videoEl.addEventListener('click', handleTouch);
     
     // Prevent default touch behaviors
-    videoEl.addEventListener('touchmove', e => e.preventDefault());
-    videoEl.addEventListener('touchend', e => e.preventDefault());
+    videoEl.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+    videoEl.addEventListener('touchend', e => e.preventDefault(), { passive: false });
   }
 
   function handleTouch(e) {
@@ -549,8 +549,9 @@
   window.requestPermissions = async () => {
     try {
       updateStatus("Requesting camera permissions...");
+      clearError();
       
-      // First, try to get basic camera access
+      // Request camera permission
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: 'environment' }
       });
@@ -565,7 +566,7 @@
       
     } catch (error) {
       showError(`Permission denied: ${error.message}. Please allow camera access and try again.`);
-      updateStatus("❌ Permission denied");
+      updateStatus("❌ Permission denied - click to try again");
     }
   };
 
@@ -604,7 +605,7 @@
         cameraSelect.appendChild(option);
       });
       
-      updateStatus(`✅ Found ${videoDevices.length} camera(s)`);
+      updateStatus(`✅ Found ${videoDevices.length} camera(s) - ready to start!`);
       clearError();
       
     } catch (error) {
@@ -794,4 +795,7 @@
         
         videoEl.srcObject = stream;
         currentStream = stream;
-        currentTrack = stream.
+        currentTrack = stream.getVideoTracks()[0];
+        capabilities = currentTrack.getCapabilities();
+        
+        display
