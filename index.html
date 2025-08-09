@@ -1,151 +1,721 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Camera with Timed Capture and Permissions</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f0f0f0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin: 0;
-      padding: 20px;
-    }
-    video, canvas {
-      border: 2px solid #333;
-      border-radius: 8px;
-      max-width: 100%;
-    }
-    .button-group {
-      margin-top: 10px;
-    }
-    button {
-      margin: 5px;
-      padding: 10px 15px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-    input {
-      padding: 5px;
-      font-size: 14px;
-      width: 60px;
-      text-align: right;
-    }
-    #permissionStatus {
-      margin-bottom: 10px;
-      font-weight: bold;
-      color: #222;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enhanced Sensor Camera with Full Controls</title>
+<style>
+  body {
+    font-family: monospace;
+    background: #111;
+    color: #eee;
+    padding: 1em;
+    max-width: 800px;
+    margin: auto;
+  }
+  video {
+    width: 100%;
+    border-radius: 8px;
+    margin-bottom: 1em;
+    background: black;
+  }
+  pre {
+    background: #222;
+    padding: 1em;
+    border-radius: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  button, select, input {
+    font-size: 1rem;
+    padding: 0.5em;
+    margin: 0.3em 0;
+    cursor: pointer;
+    background: #333;
+    color: #eee;
+    border: 1px solid #555;
+    border-radius: 4px;
+  }
+  .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1em;
+    margin: 1em 0;
+  }
+  .control-group {
+    background: #222;
+    padding: 1em;
+    border-radius: 8px;
+  }
+  .control-group h3 {
+    margin-top: 0;
+    color: #4CAF50;
+  }
+  .slider-container {
+    margin: 0.5em 0;
+  }
+  .slider-container label {
+    display: block;
+    margin-bottom: 0.3em;
+  }
+  .slider-container input[type="range"] {
+    width: 100%;
+    margin: 0;
+  }
+  .value-display {
+    color: #FFA500;
+    font-weight: bold;
+  }
+  .button-group {
+    display: flex;
+    gap: 0.5em;
+    flex-wrap: wrap;
+  }
+  #cameraInfo {
+    background: #1a1a1a;
+    padding: 1em;
+    border-radius: 8px;
+    margin: 1em 0;
+    font-size: 0.9em;
+  }
+  .error {
+    color: #ff6b6b;
+    background: #2d1515;
+    padding: 1em;
+    border-radius: 8px;
+    margin: 1em 0;
+  }
+  .status {
+    color: #51cf66;
+    background: #1a2e1a;
+    padding: 0.5em;
+    border-radius: 4px;
+    margin: 0.5em 0;
+  }
+</style>
 </head>
 <body>
 
-  <h1>Camera Capture with Permissions</h1>
-  <div id="permissionStatus">Requesting permissions...</div>
+<h1>📸 Enhanced Sensor Camera</h1>
 
-  <video id="video" autoplay playsinline width="640" height="480"></video>
-  <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+<div id="permissionStatus" class="status">Checking permissions...</div>
 
-  <div class="button-group">
-    <button id="captureBtn">📸 Capture Photo</button>
+<div class="button-group">
+  <button onclick="requestPermissions()">🔐 Request Permissions</button>
+  <select id="cameraSelect"><option>Loading cameras...</option></select>
+  <select id="resolutionSelect">
+    <option value="640x480">640x480</option>
+    <option value="1280x720">1280x720 (HD)</option>
+    <option value="1920x1080">1920x1080 (FHD)</option>
+    <option value="2560x1440">2560x1440 (QHD)</option>
+    <option value="3840x2160">3840x2160 (4K)</option>
+  </select>
+  <button onclick="startCamera()">🎥 Start Camera</button>
+  <button onclick="capturePhoto()">📷 Capture Photo</button>
+</div>
+
+<video id="video" autoplay playsinline muted></video>
+
+<div class="controls-grid">
+  <div class="control-group">
+    <h3>🔍 Focus & Zoom</h3>
+    <div class="slider-container">
+      <label>Focus Distance: <span id="focusDistanceValue" class="value-display">Auto</span></label>
+      <input type="range" id="focusDistanceSlider" min="0" max="100" value="0">
+    </div>
+    <div class="slider-container">
+      <label>Zoom: <span id="zoomValue" class="value-display">1x</span></label>
+      <input type="range" id="zoomSlider" min="1" max="10" step="0.1" value="1">
+    </div>
+    <div class="button-group">
+      <button onclick="setFocusMode('manual')">Manual Focus</button>
+      <button onclick="setFocusMode('continuous')">Auto Focus</button>
+    </div>
   </div>
 
-  <div class="button-group">
-    <label>
-      Delay (seconds):
-      <input type="number" id="captureDelay" value="0.1" step="0.1" min="0" />
-    </label>
-    <button id="startTimedCapture">▶ Start Timed Capture</button>
-    <button id="stopTimedCapture">⏹ Finish</button>
+  <div class="control-group">
+    <h3>💡 Exposure</h3>
+    <div class="slider-container">
+      <label>Exposure Time: <span id="exposureTimeValue" class="value-display">Auto</span></label>
+      <input type="range" id="exposureTimeSlider" min="1" max="1000" value="1">
+    </div>
+    <div class="slider-container">
+      <label>ISO: <span id="isoValue" class="value-display">Auto</span></label>
+      <input type="range" id="isoSlider" min="50" max="3200" step="50" value="100">
+    </div>
+    <div class="slider-container">
+      <label>Exposure Compensation: <span id="exposureCompValue" class="value-display">0</span></label>
+      <input type="range" id="exposureCompSlider" min="-3" max="3" step="0.1" value="0">
+    </div>
+    <div class="button-group">
+      <button onclick="setExposureMode('manual')">Manual</button>
+      <button onclick="setExposureMode('continuous')">Auto</button>
+    </div>
   </div>
+
+  <div class="control-group">
+    <h3>🌈 Color & White Balance</h3>
+    <div class="slider-container">
+      <label>White Balance: <span id="whiteBalanceValue" class="value-display">Auto</span></label>
+      <input type="range" id="whiteBalanceSlider" min="2000" max="8000" step="100" value="5500">
+    </div>
+    <div class="slider-container">
+      <label>Saturation: <span id="saturationValue" class="value-display">50</span></label>
+      <input type="range" id="saturationSlider" min="0" max="100" value="50">
+    </div>
+    <div class="slider-container">
+      <label>Contrast: <span id="contrastValue" class="value-display">50</span></label>
+      <input type="range" id="contrastSlider" min="0" max="100" value="50">
+    </div>
+    <div class="slider-container">
+      <label>Brightness: <span id="brightnessValue" class="value-display">50</span></label>
+      <input type="range" id="brightnessSlider" min="0" max="100" value="50">
+    </div>
+    <div class="button-group">
+      <button onclick="setWhiteBalanceMode('manual')">Manual WB</button>
+      <button onclick="setWhiteBalanceMode('continuous')">Auto WB</button>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <h3>⚙️ Advanced Settings</h3>
+    <div class="slider-container">
+      <label>Sharpness: <span id="sharpnessValue" class="value-display">50</span></label>
+      <input type="range" id="sharpnessSlider" min="0" max="100" value="50">
+    </div>
+    <div class="button-group">
+      <button onclick="toggleTorch()">🔦 Toggle Torch</button>
+      <button onclick="resetAllSettings()">🔄 Reset All</button>
+      <button onclick="switchCamera()">🔄 Switch Camera</button>
+    </div>
+  </div>
+</div>
+
+<div id="cameraInfo">
+  <h3>📊 Camera Capabilities</h3>
+  <pre id="capabilitiesDisplay">No camera active</pre>
+</div>
+
+<div id="errorDisplay"></div>
+
+<h2>📡 Sensor Data</h2>
+<pre id="sensorData">Waiting for sensor data...</pre>
+
+<canvas id="canvas" style="display:none;"></canvas>
 
 <script>
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const context = canvas.getContext('2d');
-  const permissionStatusEl = document.getElementById('permissionStatus');
+(async () => {
+  const videoEl = document.getElementById("video");
+  const sensorDataEl = document.getElementById("sensorData");
+  const canvas = document.getElementById("canvas");
+  const resolutionSelect = document.getElementById("resolutionSelect");
+  const cameraSelect = document.getElementById("cameraSelect");
+  const capabilitiesDisplay = document.getElementById("capabilitiesDisplay");
+  const permissionStatus = document.getElementById("permissionStatus");
+  const errorDisplay = document.getElementById("errorDisplay");
+  
+  let currentStream = null;
+  let currentTrack = null;
+  let capabilities = {};
+  let torchEnabled = false;
+  let availableCameras = [];
+  let currentCameraIndex = 0;
+  let permissionsGranted = false;
+  
+  const data = {
+    deviceOrientation: {},
+    deviceMotion: {},
+    geolocation: {},
+    ambientLight: null,
+    magnetometer: null,
+    gyroscope: null,
+    accelerometer: null
+  };
 
-  let stream = null;
-  let timedCaptureTimer = null;
+  const fmt = v => (v == null || isNaN(v)) ? "NA" : parseFloat(v).toFixed(8);
 
-  async function requestPermissions() {
+  function showError(message) {
+    errorDisplay.innerHTML = `<div class="error">❌ ${message}</div>`;
+    console.error(message);
+  }
+
+  function clearError() {
+    errorDisplay.innerHTML = '';
+  }
+
+  function updateStatus(message) {
+    permissionStatus.textContent = message;
+  }
+
+  function updateDisplay() {
+    sensorDataEl.textContent = JSON.stringify(data, null, 2);
+  }
+
+  function updateSliderValue(sliderId, valueId, value, suffix = '') {
+    const valueEl = document.getElementById(valueId);
+    if (valueEl) {
+      valueEl.textContent = value + suffix;
+    }
+  }
+
+  window.requestPermissions = async () => {
     try {
-      permissionStatusEl.textContent = "Requesting camera and microphone permissions...";
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      video.srcObject = stream;
-      permissionStatusEl.textContent = "Camera and microphone permissions granted.";
-
-      // Request geolocation permission explicitly:
-      permissionStatusEl.textContent = "Requesting geolocation permission...";
-      await new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-          permissionStatusEl.textContent = "Geolocation not supported.";
-          resolve();
-          return;
-        }
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            permissionStatusEl.textContent = "All permissions granted.";
-            resolve(pos);
-          },
-          (err) => {
-            permissionStatusEl.textContent = "Geolocation permission denied or error.";
-            resolve();
-          }
-        );
+      updateStatus("Requesting camera permissions...");
+      
+      // First, try to get basic camera access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' }
       });
+      
+      // Stop the stream immediately after getting permission
+      stream.getTracks().forEach(track => track.stop());
+      
+      permissionsGranted = true;
+      updateStatus("✅ Permissions granted! Enumerating cameras...");
+      
+      await enumerateCameras();
+      
+    } catch (error) {
+      showError(`Permission denied: ${error.message}. Please allow camera access and try again.`);
+      updateStatus("❌ Permission denied");
+    }
+  };
 
-    } catch (err) {
-      permissionStatusEl.textContent = "Permission denied or error: " + err.message;
-      alert("Please allow camera, microphone, and location permissions to use this app.");
-      console.error("Permission error:", err);
+  async function enumerateCameras() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      
+      if (videoDevices.length === 0) {
+        throw new Error("No cameras found on this device");
+      }
+      
+      availableCameras = videoDevices;
+      cameraSelect.innerHTML = '';
+      
+      videoDevices.forEach((device, index) => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        
+        // Better camera labeling for mobile devices
+        let label = device.label;
+        if (!label || label === '') {
+          if (index === 0) label = "Camera 1 (Main)";
+          else if (index === 1) label = "Camera 2 (Front/Secondary)";
+          else label = `Camera ${index + 1}`;
+        }
+        
+        // Try to identify front/back cameras
+        if (label.toLowerCase().includes('front') || label.toLowerCase().includes('user')) {
+          label += " 🤳";
+        } else if (label.toLowerCase().includes('back') || label.toLowerCase().includes('environment')) {
+          label += " 📷";
+        }
+        
+        option.text = label;
+        cameraSelect.appendChild(option);
+      });
+      
+      updateStatus(`✅ Found ${videoDevices.length} camera(s)`);
+      clearError();
+      
+    } catch (error) {
+      showError(`Failed to enumerate cameras: ${error.message}`);
     }
   }
 
-  function capturePhoto() {
-    if (!stream) {
-      alert("Camera not started or permissions not granted.");
-      return;
-    }
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.href = imageData;
-    link.download = `photo_${Date.now()}.png`;
-    link.click();
-    console.log('📸 Photo captured and saved.');
+  function setupSliderListeners() {
+    // Focus Distance
+    const focusSlider = document.getElementById('focusDistanceSlider');
+    focusSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      updateSliderValue('focusDistanceSlider', 'focusDistanceValue', value === 0 ? 'Auto' : value + '%');
+      if (currentTrack && capabilities.focusDistance) {
+        const distance = capabilities.focusDistance.min + (capabilities.focusDistance.max - capabilities.focusDistance.min) * value / 100;
+        applyConstraint({ focusDistance: distance });
+      }
+    });
+
+    // Zoom
+    const zoomSlider = document.getElementById('zoomSlider');
+    zoomSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      updateSliderValue('zoomSlider', 'zoomValue', value + 'x');
+      if (currentTrack && capabilities.zoom) {
+        applyConstraint({ zoom: value });
+      }
+    });
+
+    // Exposure Time
+    const exposureSlider = document.getElementById('exposureTimeSlider');
+    exposureSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      updateSliderValue('exposureTimeSlider', 'exposureTimeValue', value === 1 ? 'Auto' : '1/' + value + 's');
+      if (currentTrack && capabilities.exposureTime) {
+        const exposureTime = 1 / value;
+        applyConstraint({ exposureTime: exposureTime });
+      }
+    });
+
+    // ISO
+    const isoSlider = document.getElementById('isoSlider');
+    isoSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      updateSliderValue('isoSlider', 'isoValue', value);
+      if (currentTrack && capabilities.iso) {
+        applyConstraint({ iso: value });
+      }
+    });
+
+    // Exposure Compensation
+    const exposureCompSlider = document.getElementById('exposureCompSlider');
+    exposureCompSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      updateSliderValue('exposureCompSlider', 'exposureCompValue', value);
+      if (currentTrack && capabilities.exposureCompensation) {
+        applyConstraint({ exposureCompensation: value });
+      }
+    });
+
+    // White Balance
+    const wbSlider = document.getElementById('whiteBalanceSlider');
+    wbSlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      updateSliderValue('whiteBalanceSlider', 'whiteBalanceValue', value + 'K');
+      if (currentTrack && capabilities.colorTemperature) {
+        applyConstraint({ whiteBalanceMode: 'manual', colorTemperature: value });
+      }
+    });
+
+    // Image adjustments
+    ['saturation', 'contrast', 'brightness', 'sharpness'].forEach(setting => {
+      const slider = document.getElementById(setting + 'Slider');
+      slider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        updateSliderValue(setting + 'Slider', setting + 'Value', value);
+        if (currentTrack && capabilities[setting]) {
+          const range = capabilities[setting];
+          const actualValue = range.min + (range.max - range.min) * value / 100;
+          applyConstraint({ [setting]: actualValue });
+        }
+      });
+    });
   }
 
-  window.capturePhoto = capturePhoto;
+  async function applyConstraint(constraint) {
+    if (!currentTrack) return;
+    try {
+      await currentTrack.applyConstraints({ advanced: [constraint] });
+    } catch (e) {
+      console.warn('Failed to apply constraint:', constraint, e.message);
+    }
+  }
 
-  document.getElementById('captureBtn').addEventListener('click', capturePhoto);
-
-  document.getElementById("startTimedCapture").addEventListener("click", () => {
-    const delay = parseFloat(document.getElementById("captureDelay").value) * 1000;
-    if (isNaN(delay) || delay <= 0) {
-      alert("Please enter a valid delay time in seconds.");
+  function displayCapabilities() {
+    if (!capabilities || Object.keys(capabilities).length === 0) {
+      capabilitiesDisplay.textContent = "No camera capabilities available";
       return;
     }
-    if (timedCaptureTimer) clearTimeout(timedCaptureTimer);
-    timedCaptureTimer = setTimeout(() => {
-      window.capturePhoto();
-      timedCaptureTimer = null;
-    }, delay);
-    console.log(`▶ Timed capture started: will take photo in ${delay / 1000} seconds.`);
-  });
 
-  document.getElementById("stopTimedCapture").addEventListener("click", () => {
-    if (timedCaptureTimer) {
-      clearTimeout(timedCaptureTimer);
-      timedCaptureTimer = null;
-      console.log("⏹ Timed capture cancelled.");
+    const relevant = {};
+    ['zoom', 'focusDistance', 'focusMode', 'exposureMode', 'exposureTime', 'exposureCompensation', 
+     'iso', 'whiteBalanceMode', 'colorTemperature', 'brightness', 'contrast', 'saturation', 
+     'sharpness', 'torch'].forEach(key => {
+      if (capabilities[key]) relevant[key] = capabilities[key];
+    });
+
+    capabilitiesDisplay.textContent = JSON.stringify(relevant, null, 2);
+  }
+
+  function setupSliderRanges() {
+    // Update slider ranges based on capabilities
+    if (capabilities.zoom) {
+      const zoomSlider = document.getElementById('zoomSlider');
+      zoomSlider.min = capabilities.zoom.min;
+      zoomSlider.max = capabilities.zoom.max;
+      zoomSlider.step = (capabilities.zoom.max - capabilities.zoom.min) / 100;
     }
+
+    if (capabilities.focusDistance) {
+      const focusSlider = document.getElementById('focusDistanceSlider');
+      focusSlider.min = 0;
+      focusSlider.max = 100;
+    }
+
+    if (capabilities.exposureTime) {
+      const expSlider = document.getElementById('exposureTimeSlider');
+      expSlider.min = Math.ceil(1 / capabilities.exposureTime.max);
+      expSlider.max = Math.ceil(1 / capabilities.exposureTime.min);
+    }
+
+    if (capabilities.colorTemperature) {
+      const wbSlider = document.getElementById('whiteBalanceSlider');
+      wbSlider.min = capabilities.colorTemperature.min;
+      wbSlider.max = capabilities.colorTemperature.max;
+    }
+  }
+
+  window.startCamera = async () => {
+    if (!permissionsGranted) {
+      showError("Please request permissions first");
+      return;
+    }
+
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+    }
+
+    const [width, height] = resolutionSelect.value.split('x').map(Number);
+    const deviceId = cameraSelect.value;
+    
+    if (!deviceId) {
+      showError("No camera selected");
+      return;
+    }
+
+    // Try multiple constraint configurations for better compatibility
+    const constraintConfigs = [
+      // Exact constraints
+      {
+        video: {
+          deviceId: { exact: deviceId },
+          width: { exact: width },
+          height: { exact: height }
+        }
+      },
+      // Ideal constraints (fallback)
+      {
+        video: {
+          deviceId: { exact: deviceId },
+          width: { ideal: width },
+          height: { ideal: height }
+        }
+      },
+      // Basic constraints (last resort)
+      {
+        video: {
+          deviceId: { exact: deviceId }
+        }
+      }
+    ];
+
+    for (const constraints of constraintConfigs) {
+      try {
+        updateStatus("Starting camera...");
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        videoEl.srcObject = stream;
+        currentStream = stream;
+        currentTrack = stream.getVideoTracks()[0];
+        capabilities = currentTrack.getCapabilities();
+        
+        displayCapabilities();
+        setupSliderRanges();
+        
+        updateStatus("✅ Camera started successfully");
+        clearError();
+        return;
+        
+      } catch (e) {
+        console.warn('Failed with constraints:', constraints, e.message);
+        continue;
+      }
+    }
+    
+    showError("Failed to start camera with all constraint configurations");
+  };
+
+  window.switchCamera = async () => {
+    if (availableCameras.length <= 1) return;
+    
+    currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+    cameraSelect.selectedIndex = currentCameraIndex;
+    await startCamera();
+  };
+
+  window.setFocusMode = async (mode) => {
+    if (currentTrack && capabilities.focusMode && capabilities.focusMode.includes(mode)) {
+      await applyConstraint({ focusMode: mode });
+    }
+  };
+
+  window.setExposureMode = async (mode) => {
+    if (currentTrack && capabilities.exposureMode && capabilities.exposureMode.includes(mode)) {
+      await applyConstraint({ exposureMode: mode });
+    }
+  };
+
+  window.setWhiteBalanceMode = async (mode) => {
+    if (currentTrack && capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes(mode)) {
+      await applyConstraint({ whiteBalanceMode: mode });
+    }
+  };
+
+  window.toggleTorch = async () => {
+    if (currentTrack && capabilities.torch) {
+      torchEnabled = !torchEnabled;
+      await applyConstraint({ torch: torchEnabled });
+    }
+  };
+
+  window.resetAllSettings = async () => {
+    // Reset all sliders to default values
+    document.getElementById('focusDistanceSlider').value = 0;
+    document.getElementById('zoomSlider').value = 1;
+    document.getElementById('exposureTimeSlider').value = 1;
+    document.getElementById('isoSlider').value = 100;
+    document.getElementById('exposureCompSlider').value = 0;
+    document.getElementById('whiteBalanceSlider').value = 5500;
+    ['saturation', 'contrast', 'brightness', 'sharpness'].forEach(setting => {
+      document.getElementById(setting + 'Slider').value = 50;
+    });
+
+    // Restart camera to reset all settings
+    await startCamera();
+  };
+
+  // Initialize the app
+  setupSliderListeners();
+  
+  // Check if we can enumerate devices without explicit permission (some browsers allow this)
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    if (devices.some(d => d.kind === 'videoinput' && d.label)) {
+      permissionsGranted = true;
+      await enumerateCameras();
+      updateStatus("✅ Ready to start camera");
+    } else {
+      updateStatus("📱 Please request permissions to access camera");
+    }
+  } catch (e) {
+    updateStatus("📱 Please request permissions to access camera");
+  }
+
+  // Sensor event listeners (unchanged from original)
+  window.addEventListener("deviceorientation", e => {
+    data.deviceOrientation = {
+      alpha: fmt(e.alpha),
+      beta: fmt(e.beta),
+      gamma: fmt(e.gamma),
+      absolute: e.absolute
+    };
+    updateDisplay();
   });
 
-  // Start permissions and camera on page load
-  requestPermissions();
+  window.addEventListener("devicemotion", e => {
+    data.deviceMotion = {
+      acceleration: {
+        x: fmt(e.acceleration?.x),
+        y: fmt(e.acceleration?.y),
+        z: fmt(e.acceleration?.z)
+      },
+      rotationRate: {
+        alpha: fmt(e.rotationRate?.alpha),
+        beta: fmt(e.rotationRate?.beta),
+        gamma: fmt(e.rotationRate?.gamma)
+      },
+      interval: e.interval
+    };
+    updateDisplay();
+  });
+
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(pos => {
+      data.geolocation = {
+        latitude: fmt(pos.coords.latitude),
+        longitude: fmt(pos.coords.longitude),
+        accuracy: fmt(pos.coords.accuracy)
+      };
+      updateDisplay();
+    }, err => {
+      data.geolocation = { error: err.message };
+      updateDisplay();
+    }, { enableHighAccuracy: true });
+  }
+
+  if ('AmbientLightSensor' in window) {
+    try {
+      const sensor = new AmbientLightSensor();
+      sensor.onreading = () => {
+        data.ambientLight = fmt(sensor.illuminance);
+        updateDisplay();
+      };
+      sensor.onerror = e => {
+        data.ambientLight = "Error: " + e.error.name;
+        updateDisplay();
+      };
+      sensor.start();
+    } catch (e) {
+      data.ambientLight = "Sensor init failed";
+    }
+  }
+
+  async function startSensor(SensorClass, key) {
+    if (!(SensorClass in window)) {
+      data[key] = key + " not supported";
+      return;
+    }
+    try {
+      const sensor = new window[SensorClass]({ frequency: 10 });
+      sensor.addEventListener('reading', () => {
+        data[key] = {
+          x: fmt(sensor.x),
+          y: fmt(sensor.y),
+          z: fmt(sensor.z)
+        };
+        updateDisplay();
+      });
+      sensor.start();
+    } catch (e) {
+      data[key] = "Start failed: " + e.message;
+    }
+  }
+
+  await startSensor('Magnetometer', 'magnetometer');
+  await startSensor('Gyroscope', 'gyroscope');
+  await startSensor('Accelerometer', 'accelerometer');
+
+  window.capturePhoto = function () {
+    if (!currentStream) {
+      showError("No camera stream active");
+      return;
+    }
+
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(videoEl, 0, 0);
+
+    const d = data;
+    const settings = currentTrack ? currentTrack.getSettings() : {};
+    
+    const nameParts = [
+      fmt(d.geolocation.latitude),
+      fmt(d.geolocation.longitude),
+      fmt(d.deviceOrientation.alpha),
+      fmt(d.deviceOrientation.beta),
+      fmt(d.deviceOrientation.gamma),
+      fmt(d.ambientLight),
+      fmt(d.magnetometer?.x),
+      fmt(d.magnetometer?.y),
+      fmt(d.magnetometer?.z),
+      settings.zoom || 'NA',
+      settings.exposureTime || 'NA',
+      settings.iso || 'NA',
+      Date.now()
+    ];
+
+    const filename = `photo_${nameParts.join('.')}.png`;
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  }
+})();
 </script>
 
 </body>
