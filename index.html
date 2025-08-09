@@ -13,11 +13,43 @@
     max-width: 800px;
     margin: auto;
   }
+  .video-container {
+    position: relative;
+    margin-bottom: 1em;
+  }
   video {
     width: 100%;
     border-radius: 8px;
-    margin-bottom: 1em;
     background: black;
+    cursor: crosshair;
+  }
+  .focus-indicator {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    border: 2px solid #4CAF50;
+    border-radius: 50%;
+    pointer-events: none;
+    display: none;
+    animation: focusPulse 0.5s ease-out;
+  }
+  .wb-indicator {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border: 2px solid #FFA500;
+    border-radius: 4px;
+    pointer-events: none;
+    display: none;
+    animation: wbPulse 0.5s ease-out;
+  }
+  @keyframes focusPulse {
+    0% { transform: scale(1.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes wbPulse {
+    0% { transform: scale(1.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
   }
   pre {
     background: #222;
@@ -35,6 +67,10 @@
     color: #eee;
     border: 1px solid #555;
     border-radius: 4px;
+  }
+  button.active {
+    background: #4CAF50;
+    color: white;
   }
   .controls-grid {
     display: grid;
@@ -71,6 +107,25 @@
     gap: 0.5em;
     flex-wrap: wrap;
   }
+  .interval-controls {
+    background: #2a2a2a;
+    padding: 1em;
+    border-radius: 8px;
+    margin: 1em 0;
+  }
+  .interval-controls h3 {
+    margin-top: 0;
+    color: #FF6B6B;
+  }
+  .interval-input {
+    width: 80px;
+    text-align: center;
+  }
+  .capture-counter {
+    color: #51cf66;
+    font-weight: bold;
+    margin-left: 1em;
+  }
   #cameraInfo {
     background: #1a1a1a;
     padding: 1em;
@@ -91,6 +146,14 @@
     padding: 0.5em;
     border-radius: 4px;
     margin: 0.5em 0;
+  }
+  .touch-instructions {
+    background: #1a1a2e;
+    color: #87ceeb;
+    padding: 0.8em;
+    border-radius: 8px;
+    margin: 1em 0;
+    font-size: 0.9em;
   }
 </style>
 </head>
@@ -114,7 +177,28 @@
   <button onclick="capturePhoto()">📷 Capture Photo</button>
 </div>
 
-<video id="video" autoplay playsinline muted></video>
+<div class="touch-instructions">
+  🎯 <strong>Touch Controls:</strong> Single tap to focus • Double tap for white balance • Touch and hold for manual focus lock
+</div>
+
+<div class="video-container">
+  <video id="video" autoplay playsinline muted></video>
+  <div id="focusIndicator" class="focus-indicator"></div>
+  <div id="wbIndicator" class="wb-indicator"></div>
+</div>
+
+<div class="interval-controls">
+  <h3>⏱️ Interval Capture</h3>
+  <div class="button-group">
+    <button id="intervalToggle" onclick="toggleIntervalCapture()">▶️ Start Interval</button>
+    <label>Interval (seconds): <input id="intervalInput" type="number" class="interval-input" min="0.1" step="0.1" value="0.1"></label>
+    <span class="capture-counter">Photos: <span id="captureCount">0</span></span>
+  </div>
+  <div style="margin-top: 0.5em;">
+    <button onclick="resetCounter()">🔄 Reset Counter</button>
+    <button onclick="downloadCaptureLog()">📋 Download Log</button>
+  </div>
+</div>
 
 <div class="controls-grid">
   <div class="control-group">
@@ -213,6 +297,11 @@
   const capabilitiesDisplay = document.getElementById("capabilitiesDisplay");
   const permissionStatus = document.getElementById("permissionStatus");
   const errorDisplay = document.getElementById("errorDisplay");
+  const focusIndicator = document.getElementById("focusIndicator");
+  const wbIndicator = document.getElementById("wbIndicator");
+  const intervalToggle = document.getElementById("intervalToggle");
+  const intervalInput = document.getElementById("intervalInput");
+  const captureCountEl = document.getElementById("captureCount");
   
   let currentStream = null;
   let currentTrack = null;
@@ -221,6 +310,11 @@
   let availableCameras = [];
   let currentCameraIndex = 0;
   let permissionsGranted = false;
+  let intervalCapture = null;
+  let captureCount = 0;
+  let captureLog = [];
+  let lastTouchTime = 0;
+  let touchTimeout = null;
   
   const data = {
     deviceOrientation: {},
@@ -257,6 +351,200 @@
       valueEl.textContent = value + suffix;
     }
   }
+
+  // Touch controls for video element
+  function setupTouchControls() {
+    videoEl.addEventListener('touchstart', handleTouch);
+    videoEl.addEventListener('click', handleTouch);
+    
+    // Prevent default touch behaviors
+    videoEl.addEventListener('touchmove', e => e.preventDefault());
+    videoEl.addEventListener('touchend', e => e.preventDefault());
+  }
+
+  function handleTouch(e) {
+    e.preventDefault();
+    
+    const rect = videoEl.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    
+    const now = Date.now();
+    const isDoubleTouch = (now - lastTouchTime) < 300;
+    
+    if (e.type === 'touchstart' && !isDoubleTouch) {
+      // Set up potential long press
+      touchTimeout = setTimeout(() => {
+        handleLongPress(x, y);
+      }, 500);
+    }
+    
+    if (e.type === 'touchend' || e.type === 'click') {
+      if (touchTimeout) {
+        clearTimeout(touchTimeout);
+        touchTimeout = null;
+      }
+      
+      if (isDoubleTouch) {
+        handleDoubleTouch(x, y);
+      } else {
+        setTimeout(() => {
+          if (Date.now() - now > 250) return; // Prevent single tap if double tap occurred
+          handleSingleTouch(x, y);
+        }, 250);
+      }
+    }
+    
+    lastTouchTime = now;
+  }
+
+  function handleSingleTouch(x, y) {
+    // Focus at touch point
+    showFocusIndicator(x, y);
+    setFocusPoint(x, y);
+  }
+
+  function handleDoubleTouch(x, y) {
+    // White balance at touch point
+    showWBIndicator(x, y);
+    setWhiteBalancePoint(x, y);
+  }
+
+  function handleLongPress(x, y) {
+    // Manual focus lock
+    showFocusIndicator(x, y);
+    setFocusPoint(x, y);
+    setFocusMode('manual');
+  }
+
+  function showFocusIndicator(x, y) {
+    focusIndicator.style.left = (x - 30) + 'px';
+    focusIndicator.style.top = (y - 30) + 'px';
+    focusIndicator.style.display = 'block';
+    
+    setTimeout(() => {
+      focusIndicator.style.display = 'none';
+    }, 1000);
+  }
+
+  function showWBIndicator(x, y) {
+    wbIndicator.style.left = (x - 20) + 'px';
+    wbIndicator.style.top = (y - 20) + 'px';
+    wbIndicator.style.display = 'block';
+    
+    setTimeout(() => {
+      wbIndicator.style.display = 'none';
+    }, 1000);
+  }
+
+  function setFocusPoint(x, y) {
+    if (!currentTrack || !capabilities.focusDistance) return;
+    
+    const rect = videoEl.getBoundingClientRect();
+    const normalizedX = x / rect.width;
+    const normalizedY = y / rect.height;
+    
+    // Simple distance-based focus (closer to center = closer focus)
+    const centerDistance = Math.sqrt(
+      Math.pow(normalizedX - 0.5, 2) + Math.pow(normalizedY - 0.5, 2)
+    );
+    
+    const focusValue = Math.max(0.1, 1 - centerDistance);
+    const focusDistance = capabilities.focusDistance.min + 
+      (capabilities.focusDistance.max - capabilities.focusDistance.min) * focusValue;
+    
+    applyConstraint({ focusMode: 'manual', focusDistance: focusDistance });
+    
+    // Update UI slider
+    const focusSlider = document.getElementById('focusDistanceSlider');
+    focusSlider.value = focusValue * 100;
+    updateSliderValue('focusDistanceSlider', 'focusDistanceValue', Math.round(focusValue * 100) + '%');
+  }
+
+  function setWhiteBalancePoint(x, y) {
+    if (!currentTrack || !capabilities.colorTemperature) return;
+    
+    const rect = videoEl.getBoundingClientRect();
+    const normalizedX = x / rect.width;
+    
+    // Map X position to color temperature (left = warm, right = cool)
+    const tempRange = capabilities.colorTemperature.max - capabilities.colorTemperature.min;
+    const colorTemp = capabilities.colorTemperature.min + (tempRange * normalizedX);
+    
+    applyConstraint({ whiteBalanceMode: 'manual', colorTemperature: colorTemp });
+    
+    // Update UI slider
+    const wbSlider = document.getElementById('whiteBalanceSlider');
+    wbSlider.value = colorTemp;
+    updateSliderValue('whiteBalanceSlider', 'whiteBalanceValue', Math.round(colorTemp) + 'K');
+  }
+
+  // Interval capture functionality
+  window.toggleIntervalCapture = function() {
+    if (intervalCapture) {
+      stopIntervalCapture();
+    } else {
+      startIntervalCapture();
+    }
+  };
+
+  function startIntervalCapture() {
+    if (!currentStream) {
+      showError("No camera stream active");
+      return;
+    }
+
+    const interval = parseFloat(intervalInput.value) * 1000; // Convert to milliseconds
+    if (interval < 100) {
+      showError("Minimum interval is 0.1 seconds");
+      return;
+    }
+
+    intervalCapture = setInterval(() => {
+      capturePhoto(true); // true indicates interval capture
+    }, interval);
+
+    intervalToggle.textContent = "⏹️ Stop Interval";
+    intervalToggle.classList.add('active');
+    intervalInput.disabled = true;
+    
+    updateStatus(`📸 Interval capture started (${intervalInput.value}s)`);
+  }
+
+  function stopIntervalCapture() {
+    if (intervalCapture) {
+      clearInterval(intervalCapture);
+      intervalCapture = null;
+    }
+
+    intervalToggle.textContent = "▶️ Start Interval";
+    intervalToggle.classList.remove('active');
+    intervalInput.disabled = false;
+    
+    updateStatus("⏹️ Interval capture stopped");
+  }
+
+  window.resetCounter = function() {
+    captureCount = 0;
+    captureCountEl.textContent = captureCount;
+    captureLog = [];
+  };
+
+  window.downloadCaptureLog = function() {
+    if (captureLog.length === 0) {
+      showError("No captures to log");
+      return;
+    }
+
+    const logContent = captureLog.map(entry => JSON.stringify(entry)).join('\n');
+    const blob = new Blob([logContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `capture_log_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   window.requestPermissions = async () => {
     try {
@@ -506,217 +794,4 @@
         
         videoEl.srcObject = stream;
         currentStream = stream;
-        currentTrack = stream.getVideoTracks()[0];
-        capabilities = currentTrack.getCapabilities();
-        
-        displayCapabilities();
-        setupSliderRanges();
-        
-        updateStatus("✅ Camera started successfully");
-        clearError();
-        return;
-        
-      } catch (e) {
-        console.warn('Failed with constraints:', constraints, e.message);
-        continue;
-      }
-    }
-    
-    showError("Failed to start camera with all constraint configurations");
-  };
-
-  window.switchCamera = async () => {
-    if (availableCameras.length <= 1) return;
-    
-    currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
-    cameraSelect.selectedIndex = currentCameraIndex;
-    await startCamera();
-  };
-
-  window.setFocusMode = async (mode) => {
-    if (currentTrack && capabilities.focusMode && capabilities.focusMode.includes(mode)) {
-      await applyConstraint({ focusMode: mode });
-    }
-  };
-
-  window.setExposureMode = async (mode) => {
-    if (currentTrack && capabilities.exposureMode && capabilities.exposureMode.includes(mode)) {
-      await applyConstraint({ exposureMode: mode });
-    }
-  };
-
-  window.setWhiteBalanceMode = async (mode) => {
-    if (currentTrack && capabilities.whiteBalanceMode && capabilities.whiteBalanceMode.includes(mode)) {
-      await applyConstraint({ whiteBalanceMode: mode });
-    }
-  };
-
-  window.toggleTorch = async () => {
-    if (currentTrack && capabilities.torch) {
-      torchEnabled = !torchEnabled;
-      await applyConstraint({ torch: torchEnabled });
-    }
-  };
-
-  window.resetAllSettings = async () => {
-    // Reset all sliders to default values
-    document.getElementById('focusDistanceSlider').value = 0;
-    document.getElementById('zoomSlider').value = 1;
-    document.getElementById('exposureTimeSlider').value = 1;
-    document.getElementById('isoSlider').value = 100;
-    document.getElementById('exposureCompSlider').value = 0;
-    document.getElementById('whiteBalanceSlider').value = 5500;
-    ['saturation', 'contrast', 'brightness', 'sharpness'].forEach(setting => {
-      document.getElementById(setting + 'Slider').value = 50;
-    });
-
-    // Restart camera to reset all settings
-    await startCamera();
-  };
-
-  // Initialize the app
-  setupSliderListeners();
-  
-  // Check if we can enumerate devices without explicit permission (some browsers allow this)
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    if (devices.some(d => d.kind === 'videoinput' && d.label)) {
-      permissionsGranted = true;
-      await enumerateCameras();
-      updateStatus("✅ Ready to start camera");
-    } else {
-      updateStatus("📱 Please request permissions to access camera");
-    }
-  } catch (e) {
-    updateStatus("📱 Please request permissions to access camera");
-  }
-
-  // Sensor event listeners (unchanged from original)
-  window.addEventListener("deviceorientation", e => {
-    data.deviceOrientation = {
-      alpha: fmt(e.alpha),
-      beta: fmt(e.beta),
-      gamma: fmt(e.gamma),
-      absolute: e.absolute
-    };
-    updateDisplay();
-  });
-
-  window.addEventListener("devicemotion", e => {
-    data.deviceMotion = {
-      acceleration: {
-        x: fmt(e.acceleration?.x),
-        y: fmt(e.acceleration?.y),
-        z: fmt(e.acceleration?.z)
-      },
-      rotationRate: {
-        alpha: fmt(e.rotationRate?.alpha),
-        beta: fmt(e.rotationRate?.beta),
-        gamma: fmt(e.rotationRate?.gamma)
-      },
-      interval: e.interval
-    };
-    updateDisplay();
-  });
-
-  if (navigator.geolocation) {
-    navigator.geolocation.watchPosition(pos => {
-      data.geolocation = {
-        latitude: fmt(pos.coords.latitude),
-        longitude: fmt(pos.coords.longitude),
-        accuracy: fmt(pos.coords.accuracy)
-      };
-      updateDisplay();
-    }, err => {
-      data.geolocation = { error: err.message };
-      updateDisplay();
-    }, { enableHighAccuracy: true });
-  }
-
-  if ('AmbientLightSensor' in window) {
-    try {
-      const sensor = new AmbientLightSensor();
-      sensor.onreading = () => {
-        data.ambientLight = fmt(sensor.illuminance);
-        updateDisplay();
-      };
-      sensor.onerror = e => {
-        data.ambientLight = "Error: " + e.error.name;
-        updateDisplay();
-      };
-      sensor.start();
-    } catch (e) {
-      data.ambientLight = "Sensor init failed";
-    }
-  }
-
-  async function startSensor(SensorClass, key) {
-    if (!(SensorClass in window)) {
-      data[key] = key + " not supported";
-      return;
-    }
-    try {
-      const sensor = new window[SensorClass]({ frequency: 10 });
-      sensor.addEventListener('reading', () => {
-        data[key] = {
-          x: fmt(sensor.x),
-          y: fmt(sensor.y),
-          z: fmt(sensor.z)
-        };
-        updateDisplay();
-      });
-      sensor.start();
-    } catch (e) {
-      data[key] = "Start failed: " + e.message;
-    }
-  }
-
-  await startSensor('Magnetometer', 'magnetometer');
-  await startSensor('Gyroscope', 'gyroscope');
-  await startSensor('Accelerometer', 'accelerometer');
-
-  window.capturePhoto = function () {
-    if (!currentStream) {
-      showError("No camera stream active");
-      return;
-    }
-
-    canvas.width = videoEl.videoWidth;
-    canvas.height = videoEl.videoHeight;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(videoEl, 0, 0);
-
-    const d = data;
-    const settings = currentTrack ? currentTrack.getSettings() : {};
-    
-    const nameParts = [
-      fmt(d.geolocation.latitude),
-      fmt(d.geolocation.longitude),
-      fmt(d.deviceOrientation.alpha),
-      fmt(d.deviceOrientation.beta),
-      fmt(d.deviceOrientation.gamma),
-      fmt(d.ambientLight),
-      fmt(d.magnetometer?.x),
-      fmt(d.magnetometer?.y),
-      fmt(d.magnetometer?.z),
-      settings.zoom || 'NA',
-      settings.exposureTime || 'NA',
-      settings.iso || 'NA',
-      Date.now()
-    ];
-
-    const filename = `photo_${nameParts.join('.')}.png`;
-    canvas.toBlob(blob => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    }, 'image/png');
-  }
-})();
-</script>
-
-</body>
-</html>
+        currentTrack = stream.
