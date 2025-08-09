@@ -2,784 +2,460 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Enhanced Sensor Camera with Full Controls</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple Camera with Sensor Data</title>
 <style>
   body {
-    font-family: monospace;
+    font-family: Arial, sans-serif;
     background: #111;
     color: #eee;
-    padding: 1em;
-    max-width: 800px;
-    margin: auto;
-    -webkit-user-select: none;
-    user-select: none;
+    padding: 10px;
+    margin: 0;
   }
-  .video-container {
-    position: relative;
-    margin-bottom: 1em;
+  .container {
+    max-width: 100%;
+    margin: 0 auto;
   }
   video {
     width: 100%;
+    max-width: 400px;
     border-radius: 8px;
     background: black;
-    cursor: crosshair;
+    display: block;
+    margin: 10px auto;
   }
-  .focus-indicator {
-    position: absolute;
-    width: 60px;
-    height: 60px;
-    border: 2px solid #4CAF50;
-    border-radius: 50%;
-    pointer-events: none;
-    display: none;
-    animation: focusPulse 0.5s ease-out;
-  }
-  .wb-indicator {
-    position: absolute;
-    width: 40px;
-    height: 40px;
-    border: 2px solid #FFA500;
-    border-radius: 4px;
-    pointer-events: none;
-    display: none;
-    animation: wbPulse 0.5s ease-out;
-  }
-  @keyframes focusPulse {
-    0% { transform: scale(1.5); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
-  }
-  @keyframes wbPulse {
-    0% { transform: scale(1.5); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
-  }
-  pre {
-    background: #222;
-    padding: 1em;
-    border-radius: 8px;
-    max-height: 300px;
-    overflow-y: auto;
-    font-size: 0.8em;
-  }
-  button, select, input {
-    font-size: 1rem;
-    padding: 0.7em;
-    margin: 0.3em 0;
-    cursor: pointer;
-    background: #333;
-    color: #eee;
-    border: 1px solid #555;
-    border-radius: 4px;
-    min-height: 44px; /* Better touch targets for mobile */
-  }
-  button.active {
+  button {
+    font-size: 16px;
+    padding: 12px 20px;
+    margin: 8px 4px;
     background: #4CAF50;
     color: white;
-  }
-  .big-permission-btn {
-    font-size: 1.2em;
-    padding: 1em 2em;
-    background: #FF6B6B;
-    color: white;
-    font-weight: bold;
-  }
-  .controls-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1em;
-    margin: 1em 0;
-  }
-  .control-group {
-    background: #222;
-    padding: 1em;
-    border-radius: 8px;
-  }
-  .control-group h3 {
-    margin-top: 0;
-    color: #4CAF50;
-  }
-  .slider-container {
-    margin: 0.5em 0;
-  }
-  .slider-container label {
-    display: block;
-    margin-bottom: 0.3em;
-  }
-  .slider-container input[type="range"] {
-    width: 100%;
-    margin: 0;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
     min-height: 44px;
   }
-  .value-display {
-    color: #FFA500;
-    font-weight: bold;
+  button:disabled {
+    background: #666;
+    cursor: not-allowed;
   }
-  .button-group {
-    display: flex;
-    gap: 0.5em;
-    flex-wrap: wrap;
+  select {
+    font-size: 16px;
+    padding: 8px;
+    margin: 8px 4px;
+    background: #333;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 4px;
+    min-height: 44px;
   }
-  .interval-controls {
-    background: #2a2a2a;
-    padding: 1em;
-    border-radius: 8px;
-    margin: 1em 0;
-  }
-  .interval-controls h3 {
-    margin-top: 0;
-    color: #FF6B6B;
-  }
-  .interval-input {
-    width: 80px;
+  .controls {
     text-align: center;
-  }
-  .capture-counter {
-    color: #51cf66;
-    font-weight: bold;
-    margin-left: 1em;
-  }
-  #cameraInfo {
-    background: #1a1a1a;
-    padding: 1em;
-    border-radius: 8px;
-    margin: 1em 0;
-    font-size: 0.8em;
-  }
-  .error {
-    color: #ff6b6b;
-    background: #2d1515;
-    padding: 1em;
-    border-radius: 8px;
-    margin: 1em 0;
+    margin: 20px 0;
   }
   .status {
-    color: #51cf66;
-    background: #1a2e1a;
-    padding: 0.5em;
-    border-radius: 4px;
-    margin: 0.5em 0;
-  }
-  .warning {
-    color: #ffd43b;
-    background: #2b2416;
-    padding: 0.5em;
-    border-radius: 4px;
-    margin: 0.5em 0;
-  }
-  .touch-instructions {
-    background: #1a1a2e;
-    color: #87ceeb;
-    padding: 0.8em;
+    background: #222;
+    padding: 15px;
     border-radius: 8px;
-    margin: 1em 0;
-    font-size: 0.9em;
+    margin: 10px 0;
+    text-align: center;
   }
-  .permission-help {
-    background: #2d1a1a;
-    color: #ffb3b3;
-    padding: 1em;
+  .error {
+    background: #8B0000;
+    color: white;
+    padding: 15px;
     border-radius: 8px;
-    margin: 1em 0;
-    font-size: 0.9em;
+    margin: 10px 0;
+  }
+  .sensor-data {
+    background: #222;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+    white-space: pre-wrap;
+    font-family: monospace;
+    font-size: 12px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .big-button {
+    font-size: 20px;
+    padding: 20px 30px;
+    background: #FF4444;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 300px;
+    margin: 20px auto;
+    display: block;
   }
 </style>
 </head>
 <body>
 
-<h1>📸 Enhanced Sensor Camera</h1>
-
-<div id="permissionStatus" class="warning">🔐 Camera access required - Click button below</div>
-
-<div id="permissionHelp" class="permission-help">
-  <strong>📱 For Android users:</strong><br>
-  1. Click "Allow Camera Access" below<br>
-  2. When browser asks, tap "Allow" or "Grant"<br>
-  3. If blocked, check browser settings > Site permissions > Camera<br>
-  4. Make sure you're using Chrome, Firefox, or Samsung Internet
-</div>
-
-<div style="text-align: center; margin: 2em 0;">
-  <button class="big-permission-btn" onclick="requestAllPermissions()">🔐 Allow Camera Access</button>
-</div>
-
-<div class="button-group">
-  <select id="cameraSelect" disabled><option>Grant permissions first</option></select>
-  <select id="resolutionSelect">
-    <option value="640x480">640x480</option>
-    <option value="1280x720">1280x720 (HD)</option>
-    <option value="1920x1080">1920x1080 (FHD)</option>
-    <option value="2560x1440">2560x1440 (QHD)</option>
-    <option value="3840x2160">3840x2160 (4K)</option>
-  </select>
-  <button onclick="startCamera()" disabled id="startBtn">🎥 Start Camera</button>
-  <button onclick="capturePhoto()" disabled id="captureBtn">📷 Capture Photo</button>
-</div>
-
-<div class="touch-instructions" style="display: none;" id="touchInstructions">
-  🎯 <strong>Touch Controls:</strong> Single tap to focus • Double tap for white balance • Long press for manual focus lock
-</div>
-
-<div class="video-container">
-  <video id="video" autoplay playsinline muted></video>
-  <div id="focusIndicator" class="focus-indicator"></div>
-  <div id="wbIndicator" class="wb-indicator"></div>
-</div>
-
-<div class="interval-controls">
-  <h3>⏱️ Interval Capture</h3>
-  <div class="button-group">
-    <button id="intervalToggle" onclick="toggleIntervalCapture()" disabled>▶️ Start Interval</button>
-    <label>Interval (seconds): <input id="intervalInput" type="number" class="interval-input" min="0.1" step="0.1" value="0.1"></label>
-    <span class="capture-counter">Photos: <span id="captureCount">0</span></span>
+<div class="container">
+  <h1 style="text-align: center;">📱 Nothing Phone 2a Camera</h1>
+  
+  <div id="status" class="status">
+    <p><strong>Step 1:</strong> Click "Start Camera" below</p>
+    <p>Your browser will ask for camera permission - click "Allow"</p>
   </div>
-  <div style="margin-top: 0.5em;">
-    <button onclick="resetCounter()">🔄 Reset Counter</button>
-    <button onclick="downloadCaptureLog()">📋 Download Log</button>
+  
+  <div class="controls">
+    <button class="big-button" onclick="startCamera()" id="startBtn">📷 Start Camera</button>
   </div>
+  
+  <div class="controls">
+    <select id="cameraSelect">
+      <option>Loading cameras...</option>
+    </select>
+    <br>
+    <button onclick="switchCamera()" id="switchBtn" disabled>🔄 Switch Camera</button>
+    <button onclick="capturePhoto()" id="captureBtn" disabled>📸 Take Photo</button>
+  </div>
+  
+  <video id="video" autoplay playsinline muted style="display: none;"></video>
+  
+  <div id="error" style="display: none;"></div>
+  
+  <div class="sensor-data">
+    <strong>📡 Sensor Data:</strong>
+    <div id="sensorData">Waiting for sensor data...</div>
+  </div>
+  
 </div>
-
-<div class="controls-grid">
-  <div class="control-group">
-    <h3>🔍 Focus & Zoom</h3>
-    <div class="slider-container">
-      <label>Focus Distance: <span id="focusDistanceValue" class="value-display">Auto</span></label>
-      <input type="range" id="focusDistanceSlider" min="0" max="100" value="0">
-    </div>
-    <div class="slider-container">
-      <label>Zoom: <span id="zoomValue" class="value-display">1x</span></label>
-      <input type="range" id="zoomSlider" min="1" max="10" step="0.1" value="1">
-    </div>
-    <div class="button-group">
-      <button onclick="setFocusMode('manual')">Manual Focus</button>
-      <button onclick="setFocusMode('continuous')">Auto Focus</button>
-    </div>
-  </div>
-
-  <div class="control-group">
-    <h3>💡 Exposure</h3>
-    <div class="slider-container">
-      <label>Exposure Time: <span id="exposureTimeValue" class="value-display">Auto</span></label>
-      <input type="range" id="exposureTimeSlider" min="1" max="1000" value="1">
-    </div>
-    <div class="slider-container">
-      <label>ISO: <span id="isoValue" class="value-display">Auto</span></label>
-      <input type="range" id="isoSlider" min="50" max="3200" step="50" value="100">
-    </div>
-    <div class="slider-container">
-      <label>Exposure Compensation: <span id="exposureCompValue" class="value-display">0</span></label>
-      <input type="range" id="exposureCompSlider" min="-3" max="3" step="0.1" value="0">
-    </div>
-    <div class="button-group">
-      <button onclick="setExposureMode('manual')">Manual</button>
-      <button onclick="setExposureMode('continuous')">Auto</button>
-    </div>
-  </div>
-
-  <div class="control-group">
-    <h3>🌈 Color & White Balance</h3>
-    <div class="slider-container">
-      <label>White Balance: <span id="whiteBalanceValue" class="value-display">Auto</span></label>
-      <input type="range" id="whiteBalanceSlider" min="2000" max="8000" step="100" value="5500">
-    </div>
-    <div class="slider-container">
-      <label>Saturation: <span id="saturationValue" class="value-display">50</span></label>
-      <input type="range" id="saturationSlider" min="0" max="100" value="50">
-    </div>
-    <div class="slider-container">
-      <label>Contrast: <span id="contrastValue" class="value-display">50</span></label>
-      <input type="range" id="contrastSlider" min="0" max="100" value="50">
-    </div>
-    <div class="slider-container">
-      <label>Brightness: <span id="brightnessValue" class="value-display">50</span></label>
-      <input type="range" id="brightnessSlider" min="0" max="100" value="50">
-    </div>
-    <div class="button-group">
-      <button onclick="setWhiteBalanceMode('manual')">Manual WB</button>
-      <button onclick="setWhiteBalanceMode('continuous')">Auto WB</button>
-    </div>
-  </div>
-
-  <div class="control-group">
-    <h3>⚙️ Advanced Settings</h3>
-    <div class="slider-container">
-      <label>Sharpness: <span id="sharpnessValue" class="value-display">50</span></label>
-      <input type="range" id="sharpnessSlider" min="0" max="100" value="50">
-    </div>
-    <div class="button-group">
-      <button onclick="toggleTorch()">🔦 Toggle Torch</button>
-      <button onclick="resetAllSettings()">🔄 Reset All</button>
-      <button onclick="switchCamera()">🔄 Switch Camera</button>
-    </div>
-  </div>
-</div>
-
-<div id="cameraInfo">
-  <h3>📊 Camera Capabilities</h3>
-  <pre id="capabilitiesDisplay">Grant camera permissions to see capabilities</pre>
-</div>
-
-<div id="errorDisplay"></div>
-
-<h2>📡 Sensor Data</h2>
-<pre id="sensorData">Waiting for sensor data...</pre>
 
 <canvas id="canvas" style="display:none;"></canvas>
 
 <script>
-(async () => {
-  const videoEl = document.getElementById("video");
-  const sensorDataEl = document.getElementById("sensorData");
-  const canvas = document.getElementById("canvas");
-  const resolutionSelect = document.getElementById("resolutionSelect");
-  const cameraSelect = document.getElementById("cameraSelect");
-  const capabilitiesDisplay = document.getElementById("capabilitiesDisplay");
-  const permissionStatus = document.getElementById("permissionStatus");
-  const errorDisplay = document.getElementById("errorDisplay");
-  const focusIndicator = document.getElementById("focusIndicator");
-  const wbIndicator = document.getElementById("wbIndicator");
-  const intervalToggle = document.getElementById("intervalToggle");
-  const intervalInput = document.getElementById("intervalInput");
-  const captureCountEl = document.getElementById("captureCount");
-  const startBtn = document.getElementById("startBtn");
-  const captureBtn = document.getElementById("captureBtn");
-  const touchInstructions = document.getElementById("touchInstructions");
-  const permissionHelp = document.getElementById("permissionHelp");
-  
-  let currentStream = null;
-  let currentTrack = null;
-  let capabilities = {};
-  let torchEnabled = false;
-  let availableCameras = [];
-  let currentCameraIndex = 0;
-  let permissionsGranted = false;
-  let intervalCapture = null;
-  let captureCount = 0;
-  let captureLog = [];
-  let lastTouchTime = 0;
-  let touchTimeout = null;
-  
-  const data = {
-    deviceOrientation: {},
-    deviceMotion: {},
-    geolocation: {},
-    ambientLight: null,
-    magnetometer: null,
-    gyroscope: null,
-    accelerometer: null
-  };
+let video = document.getElementById('video');
+let canvas = document.getElementById('canvas');
+let startBtn = document.getElementById('startBtn');
+let captureBtn = document.getElementById('captureBtn');
+let switchBtn = document.getElementById('switchBtn');
+let cameraSelect = document.getElementById('cameraSelect');
+let statusDiv = document.getElementById('status');
+let errorDiv = document.getElementById('error');
+let sensorDataDiv = document.getElementById('sensorData');
 
-  const fmt = v => (v == null || isNaN(v)) ? "NA" : parseFloat(v).toFixed(8);
+let currentStream = null;
+let cameras = [];
+let currentCameraIndex = 0;
+let sensorData = {
+  orientation: {},
+  motion: {},
+  location: {}
+};
 
-  function showError(message) {
-    errorDisplay.innerHTML = `<div class="error">❌ ${message}</div>`;
-    console.error(message);
+// Format sensor values
+function fmt(v) {
+  return (v == null || isNaN(v)) ? "N/A" : parseFloat(v).toFixed(4);
+}
+
+// Update sensor data display
+function updateSensorDisplay() {
+  const display = `
+Orientation:
+  Alpha (Z): ${fmt(sensorData.orientation.alpha)}°
+  Beta (X):  ${fmt(sensorData.orientation.beta)}°
+  Gamma (Y): ${fmt(sensorData.orientation.gamma)}°
+
+Motion Acceleration:
+  X: ${fmt(sensorData.motion.x)} m/s²
+  Y: ${fmt(sensorData.motion.y)} m/s²
+  Z: ${fmt(sensorData.motion.z)} m/s²
+
+Location:
+  Latitude:  ${fmt(sensorData.location.lat)}
+  Longitude: ${fmt(sensorData.location.lng)}
+  Accuracy:  ${fmt(sensorData.location.accuracy)}m
+
+Timestamp: ${new Date().toLocaleTimeString()}
+  `;
+  sensorDataDiv.textContent = display;
+}
+
+// Show error message
+function showError(message) {
+  errorDiv.style.display = 'block';
+  errorDiv.innerHTML = `❌ ${message}`;
+  console.error(message);
+}
+
+// Hide error message
+function hideError() {
+  errorDiv.style.display = 'none';
+}
+
+// Update status
+function updateStatus(message) {
+  statusDiv.innerHTML = `<p>${message}</p>`;
+}
+
+// Get available cameras
+async function getCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    cameras = devices.filter(device => device.kind === 'videoinput');
+    
+    cameraSelect.innerHTML = '';
+    cameras.forEach((camera, index) => {
+      const option = document.createElement('option');
+      option.value = index;
+      
+      let name = camera.label || `Camera ${index + 1}`;
+      if (name.toLowerCase().includes('back') || name.toLowerCase().includes('environment')) {
+        name += ' 📷 (Back)';
+      } else if (name.toLowerCase().includes('front') || name.toLowerCase().includes('user')) {
+        name += ' 🤳 (Front)';
+      } else if (index === 0) {
+        name += ' (Primary)';
+      }
+      
+      option.textContent = name;
+      cameraSelect.appendChild(option);
+    });
+    
+    updateStatus(`✅ Found ${cameras.length} camera(s). Camera ready!`);
+    return cameras.length > 0;
+  } catch (error) {
+    showError(`Failed to get cameras: ${error.message}`);
+    return false;
   }
+}
 
-  function clearError() {
-    errorDisplay.innerHTML = '';
-  }
-
-  function updateStatus(message, isError = false) {
-    permissionStatus.textContent = message;
-    permissionStatus.className = isError ? 'error' : 'status';
-  }
-
-  function updateDisplay() {
-    sensorDataEl.textContent = JSON.stringify(data, null, 2);
-  }
-
-  function updateSliderValue(sliderId, valueId, value, suffix = '') {
-    const valueEl = document.getElementById(valueId);
-    if (valueEl) {
-      valueEl.textContent = value + suffix;
+// Start camera
+async function startCamera() {
+  try {
+    hideError();
+    updateStatus('🔄 Starting camera...');
+    
+    // Stop any existing stream
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
     }
-  }
-
-  function enableUI() {
-    cameraSelect.disabled = false;
-    startBtn.disabled = false;
+    
+    // Try different approaches for Nothing Phone 2a
+    const constraints = [
+      // Try back camera first
+      {
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      },
+      // Fallback to any available camera
+      {
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      },
+      // Basic camera request
+      {
+        video: true
+      }
+    ];
+    
+    let stream = null;
+    for (const constraint of constraints) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraint);
+        break;
+      } catch (e) {
+        console.warn('Constraint failed:', constraint, e.message);
+        continue;
+      }
+    }
+    
+    if (!stream) {
+      throw new Error('Could not access camera');
+    }
+    
+    currentStream = stream;
+    video.srcObject = stream;
+    video.style.display = 'block';
+    
+    // Enable controls
     captureBtn.disabled = false;
-    intervalToggle.disabled = false;
-    touchInstructions.style.display = 'block';
-    permissionHelp.style.display = 'none';
+    switchBtn.disabled = false;
+    startBtn.textContent = '🛑 Stop Camera';
+    startBtn.onclick = stopCamera;
+    
+    // Get camera list
+    await getCameras();
+    
+    updateStatus('✅ Camera is active! Ready to take photos.');
+    
+  } catch (error) {
+    showError(`Camera access failed: ${error.message}. Make sure to allow camera permission when prompted.`);
+    updateStatus('❌ Camera failed to start. Try refreshing the page.');
   }
+}
 
-  // Touch controls for video element
-  function setupTouchControls() {
-    videoEl.addEventListener('touchstart', handleTouch, { passive: false });
-    videoEl.addEventListener('click', handleTouch);
-    
-    // Prevent default touch behaviors
-    videoEl.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-    videoEl.addEventListener('touchend', handleTouchEnd, { passive: false });
+// Stop camera
+function stopCamera() {
+  if (currentStream) {
+    currentStream.getTracks().forEach(track => track.stop());
+    currentStream = null;
   }
+  
+  video.srcObject = null;
+  video.style.display = 'none';
+  
+  captureBtn.disabled = true;
+  switchBtn.disabled = true;
+  startBtn.textContent = '📷 Start Camera';
+  startBtn.onclick = startCamera;
+  
+  updateStatus('📱 Camera stopped. Click "Start Camera" to begin.');
+}
 
-  function handleTouch(e) {
-    e.preventDefault();
+// Switch camera
+async function switchCamera() {
+  if (cameras.length <= 1) {
+    showError('Only one camera available');
+    return;
+  }
+  
+  try {
+    currentCameraIndex = (currentCameraIndex + 1) % cameras.length;
+    const selectedCamera = cameras[currentCameraIndex];
     
-    const rect = videoEl.getBoundingClientRect();
-    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    updateStatus('🔄 Switching camera...');
     
-    const now = Date.now();
-    const isDoubleTouch = (now - lastTouchTime) < 300;
-    
-    if (e.type === 'touchstart' && !isDoubleTouch) {
-      // Set up potential long press
-      touchTimeout = setTimeout(() => {
-        handleLongPress(x, y);
-      }, 500);
+    // Stop current stream
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
     }
     
-    if (e.type === 'click' && !e.touches) {
-      // Handle mouse click
-      if (isDoubleTouch) {
-        handleDoubleTouch(x, y);
-      } else {
-        setTimeout(() => {
-          if (Date.now() - now > 250) return;
-          handleSingleTouch(x, y);
-        }, 250);
-      }
+    // Start new stream with selected camera
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: { exact: selectedCamera.deviceId } }
+    });
+    
+    currentStream = stream;
+    video.srcObject = stream;
+    
+    // Update dropdown
+    cameraSelect.selectedIndex = currentCameraIndex;
+    
+    updateStatus(`✅ Switched to: ${selectedCamera.label || 'Camera ' + (currentCameraIndex + 1)}`);
+    
+  } catch (error) {
+    showError(`Failed to switch camera: ${error.message}`);
+  }
+}
+
+// Capture photo
+function capturePhoto() {
+  if (!currentStream) {
+    showError('No camera stream available');
+    return;
+  }
+  
+  try {
+    // Set canvas size to video size
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw video frame to canvas
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    // Create filename with sensor data
+    const timestamp = Date.now();
+    const lat = fmt(sensorData.location.lat);
+    const lng = fmt(sensorData.location.lng);
+    const alpha = fmt(sensorData.orientation.alpha);
+    const beta = fmt(sensorData.orientation.beta);
+    const gamma = fmt(sensorData.orientation.gamma);
+    
+    const filename = `photo_${timestamp}_${lat}_${lng}_${alpha}_${beta}_${gamma}.png`;
+    
+    // Download image
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      updateStatus(`✅ Photo saved: ${filename}`);
+    }, 'image/png');
+    
+  } catch (error) {
+    showError(`Failed to capture photo: ${error.message}`);
+  }
+}
+
+// Set up sensor listeners
+function setupSensors() {
+  // Device orientation
+  window.addEventListener('deviceorientation', (e) => {
+    sensorData.orientation = {
+      alpha: e.alpha,
+      beta: e.beta,
+      gamma: e.gamma
+    };
+    updateSensorDisplay();
+  });
+  
+  // Device motion
+  window.addEventListener('devicemotion', (e) => {
+    if (e.acceleration) {
+      sensorData.motion = {
+        x: e.acceleration.x,
+        y: e.acceleration.y,
+        z: e.acceleration.z
+      };
     }
-    
-    lastTouchTime = now;
-  }
-
-  function handleTouchEnd(e) {
-    e.preventDefault();
-    
-    if (touchTimeout) {
-      clearTimeout(touchTimeout);
-      touchTimeout = null;
-    }
-    
-    const rect = videoEl.getBoundingClientRect();
-    const x = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX) - rect.left;
-    const y = (e.changedTouches ? e.changedTouches[0].clientY : e.clientY) - rect.top;
-    
-    const now = Date.now();
-    const isDoubleTouch = (now - lastTouchTime) < 300 && lastTouchTime > 0;
-    
-    if (isDoubleTouch) {
-      handleDoubleTouch(x, y);
-    } else {
-      setTimeout(() => {
-        if (Date.now() - now > 250) return;
-        handleSingleTouch(x, y);
-      }, 250);
-    }
-  }
-
-  function handleSingleTouch(x, y) {
-    showFocusIndicator(x, y);
-    setFocusPoint(x, y);
-  }
-
-  function handleDoubleTouch(x, y) {
-    showWBIndicator(x, y);
-    setWhiteBalancePoint(x, y);
-  }
-
-  function handleLongPress(x, y) {
-    showFocusIndicator(x, y);
-    setFocusPoint(x, y);
-    setFocusMode('manual');
-  }
-
-  function showFocusIndicator(x, y) {
-    focusIndicator.style.left = (x - 30) + 'px';
-    focusIndicator.style.top = (y - 30) + 'px';
-    focusIndicator.style.display = 'block';
-    
-    setTimeout(() => {
-      focusIndicator.style.display = 'none';
-    }, 1000);
-  }
-
-  function showWBIndicator(x, y) {
-    wbIndicator.style.left = (x - 20) + 'px';
-    wbIndicator.style.top = (y - 20) + 'px';
-    wbIndicator.style.display = 'block';
-    
-    setTimeout(() => {
-      wbIndicator.style.display = 'none';
-    }, 1000);
-  }
-
-  function setFocusPoint(x, y) {
-    if (!currentTrack || !capabilities.focusDistance) return;
-    
-    const rect = videoEl.getBoundingClientRect();
-    const normalizedX = x / rect.width;
-    const normalizedY = y / rect.height;
-    
-    const centerDistance = Math.sqrt(
-      Math.pow(normalizedX - 0.5, 2) + Math.pow(normalizedY - 0.5, 2)
+    updateSensorDisplay();
+  });
+  
+  // Geolocation
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+      (position) => {
+        sensorData.location = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        };
+        updateSensorDisplay();
+      },
+      (error) => {
+        sensorData.location = { error: error.message };
+        updateSensorDisplay();
+      },
+      { enableHighAccuracy: true }
     );
-    
-    const focusValue = Math.max(0.1, 1 - centerDistance);
-    const focusDistance = capabilities.focusDistance.min + 
-      (capabilities.focusDistance.max - capabilities.focusDistance.min) * focusValue;
-    
-    applyConstraint({ focusMode: 'manual', focusDistance: focusDistance });
-    
-    const focusSlider = document.getElementById('focusDistanceSlider');
-    focusSlider.value = focusValue * 100;
-    updateSliderValue('focusDistanceSlider', 'focusDistanceValue', Math.round(focusValue * 100) + '%');
   }
+}
 
-  function setWhiteBalancePoint(x, y) {
-    if (!currentTrack || !capabilities.colorTemperature) return;
-    
-    const rect = videoEl.getBoundingClientRect();
-    const normalizedX = x / rect.width;
-    
-    const tempRange = capabilities.colorTemperature.max - capabilities.colorTemperature.min;
-    const colorTemp = capabilities.colorTemperature.min + (tempRange * normalizedX);
-    
-    applyConstraint({ whiteBalanceMode: 'manual', colorTemperature: colorTemp });
-    
-    const wbSlider = document.getElementById('whiteBalanceSlider');
-    wbSlider.value = colorTemp;
-    updateSliderValue('whiteBalanceSlider', 'whiteBalanceValue', Math.round(colorTemp) + 'K');
+// Initialize everything
+function init() {
+  setupSensors();
+  updateSensorDisplay();
+  
+  // Check if camera is supported
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError('Camera not supported in this browser');
+    return;
   }
+  
+  console.log('Nothing Phone 2a Camera App initialized');
+}
 
-  // Enhanced permission request that works better on Android
-  window.requestAllPermissions = async () => {
-    try {
-      updateStatus("🔄 Requesting camera access...");
-      clearError();
-      
-      // Try different constraint approaches for better Android compatibility
-      const constraintOptions = [
-        // Try back camera first (most common use case)
-        { video: { facingMode: { exact: 'environment' } } },
-        // Fallback to any camera
-        { video: { facingMode: 'environment' } },
-        // Basic video request
-        { video: true },
-        // Try with specific resolution
-        { video: { width: 1280, height: 720, facingMode: 'environment' } }
-      ];
+// Start when page loads
+init();
 
-      let stream = null;
-      let lastError = null;
+</script>
 
-      for (const constraints of constraintOptions) {
-        try {
-          console.log('Trying constraints:', constraints);
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-          break; // Success!
-        } catch (error) {
-          lastError = error;
-          console.warn('Constraint failed:', constraints, error.message);
-          continue;
-        }
-      }
-
-      if (!stream) {
-        throw lastError || new Error('All constraint attempts failed');
-      }
-
-      // Stop the stream immediately after getting permission
-      stream.getTracks().forEach(track => track.stop());
-      
-      permissionsGranted = true;
-      updateStatus("✅ Camera access granted! Finding cameras...");
-      
-      // Small delay to ensure permissions are fully processed
-      setTimeout(async () => {
-        await enumerateCameras();
-        enableUI();
-      }, 500);
-      
-    } catch (error) {
-      console.error('Permission error:', error);
-      let errorMessage = "Camera access denied. ";
-      
-      if (error.name === 'NotAllowedError') {
-        errorMessage += "Please click 'Allow' when prompted, or check browser settings.";
-      } else if (error.name === 'NotFoundError') {
-        errorMessage += "No camera found on device.";
-      } else if (error.name === 'NotSupportedError') {
-        errorMessage += "Camera not supported in this browser.";
-      } else {
-        errorMessage += error.message;
-      }
-      
-      updateStatus("❌ " + errorMessage, true);
-      showError(errorMessage + " Try refreshing the page.");
-    }
-  };
-
-  async function enumerateCameras() {
-    try {
-      // Request permission again to ensure we get device labels
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      
-      if (videoDevices.length === 0) {
-        throw new Error("No cameras found on this device");
-      }
-      
-      availableCameras = videoDevices;
-      cameraSelect.innerHTML = '';
-      
-      videoDevices.forEach((device, index) => {
-        const option = document.createElement('option');
-        option.value = device.deviceId;
-        
-        let label = device.label || `Camera ${index + 1}`;
-        
-        // Better mobile camera identification
-        if (label.toLowerCase().includes('front') || label.toLowerCase().includes('user')) {
-          label += " 🤳 (Front)";
-        } else if (label.toLowerCase().includes('back') || label.toLowerCase().includes('environment')) {
-          label += " 📷 (Back)";
-        } else if (index === 0) {
-          label += " 📷 (Main)";
-        } else if (index === 1) {
-          label += " 🤳 (Secondary)";
-        }
-        
-        option.text = label;
-        cameraSelect.appendChild(option);
-      });
-      
-      updateStatus(`✅ Found ${videoDevices.length} camera(s) - ready to start!`);
-      clearError();
-      
-    } catch (error) {
-      showError(`Failed to find cameras: ${error.message}`);
-      updateStatus("❌ Camera enumeration failed", true);
-    }
-  }
-
-  // Interval capture functionality
-  window.toggleIntervalCapture = function() {
-    if (intervalCapture) {
-      stopIntervalCapture();
-    } else {
-      startIntervalCapture();
-    }
-  };
-
-  function startIntervalCapture() {
-    if (!currentStream) {
-      showError("No camera stream active");
-      return;
-    }
-
-    const interval = parseFloat(intervalInput.value) * 1000;
-    if (interval < 100) {
-      showError("Minimum interval is 0.1 seconds");
-      return;
-    }
-
-    intervalCapture = setInterval(() => {
-      capturePhoto(true);
-    }, interval);
-
-    intervalToggle.textContent = "⏹️ Stop Interval";
-    intervalToggle.classList.add('active');
-    intervalInput.disabled = true;
-    
-    updateStatus(`📸 Interval capture started (${intervalInput.value}s)`);
-  }
-
-  function stopIntervalCapture() {
-    if (intervalCapture) {
-      clearInterval(intervalCapture);
-      intervalCapture = null;
-    }
-
-    intervalToggle.textContent = "▶️ Start Interval";
-    intervalToggle.classList.remove('active');
-    intervalInput.disabled = false;
-    
-    updateStatus("⏹️ Interval capture stopped");
-  }
-
-  window.resetCounter = function() {
-    captureCount = 0;
-    captureCountEl.textContent = captureCount;
-    captureLog = [];
-  };
-
-  window.downloadCaptureLog = function() {
-    if (captureLog.length === 0) {
-      showError("No captures to log");
-      return;
-    }
-
-    const logContent = captureLog.map(entry => JSON.stringify(entry)).join('\n');
-    const blob = new Blob([logContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `capture_log_${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  function setupSliderListeners() {
-    // Focus Distance
-    const focusSlider = document.getElementById('focusDistanceSlider');
-    focusSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      updateSliderValue('focusDistanceSlider', 'focusDistanceValue', value === 0 ? 'Auto' : value + '%');
-      if (currentTrack && capabilities.focusDistance) {
-        const distance = capabilities.focusDistance.min + (capabilities.focusDistance.max - capabilities.focusDistance.min) * value / 100;
-        applyConstraint({ focusDistance: distance });
-      }
-    });
-
-    // Zoom
-    const zoomSlider = document.getElementById('zoomSlider');
-    zoomSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      updateSliderValue('zoomSlider', 'zoomValue', value + 'x');
-      if (currentTrack && capabilities.zoom) {
-        applyConstraint({ zoom: value });
-      }
-    });
-
-    // Exposure Time
-    const exposureSlider = document.getElementById('exposureTimeSlider');
-    exposureSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      updateSliderValue('exposureTimeSlider', 'exposureTimeValue', value === 1 ? 'Auto' : '1/' + value + 's');
-      if (currentTrack && capabilities.exposureTime) {
-        const exposureTime = 1 / value;
-        applyConstraint({ exposureTime: exposureTime });
-      }
-    });
-
-    // ISO
-    const isoSlider = document.getElementById('isoSlider');
-    isoSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      updateSliderValue('isoSlider', 'isoValue', value);
-      if (currentTrack && capabilities.iso) {
-        applyConstraint({ iso: value });
-      }
-    });
-
-    // Exposure Compensation
-    const exposureCompSlider = document.getElementById('exposureCompSlider');
-    exposureCompSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      updateSliderValue('exposureCompSlider', 'exposureCompValue', value);
-      if (currentTrack && capabilities.exposureCompensation) {
-        applyConstraint({ exposureCompensation: value });
-      }
-    });
-
-    // White Balance
-    const wbSlider = document.getElementById('whiteBalanceSlider');
-    wbSlider.addEventListener('input', (e) => {
-      const value = parseFloat(e.target.value);
-      updateSliderValue('whiteBalanceSlider', 'whiteBalanceValue', value + 'K');
-      if (currentTrack && capabilities.colorTemperature) {
-        applyConstraint({ whiteBalanceMode:
+</body>
+</html>
